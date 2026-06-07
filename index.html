@@ -1661,9 +1661,19 @@ async function loadMatchsLibres() {
       return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
     }
 
-    var enCours = matchsLibresCache.filter(function(m){ if(m.done) return false; var d=parseDate(m); return d===today; });
-    var aVenir  = matchsLibresCache.filter(function(m){ if(m.done) return false; var d=parseDate(m); return !d||d>today; });
-    var joues   = matchsLibresCache.filter(function(m){ return !!m.done; });
+    // Normalize done field (could be boolean, null, or string from Supabase)
+    matchsLibresCache.forEach(function(m){ m.done = m.done===true||m.done==='true'||m.done===1; });
+
+    var notDone = matchsLibresCache.filter(function(m){ return !m.done; });
+    var joues   = matchsLibresCache.filter(function(m){ return m.done; });
+
+    var enCours = notDone.filter(function(m){ var d=parseDate(m); return d===today; });
+    var aVenir  = notDone.filter(function(m){ var d=parseDate(m); return !d||d>today; });
+    var passe   = notDone.filter(function(m){ var d=parseDate(m); return d&&d<today; });
+    // Add past undone matches to à venir so nothing is lost
+    aVenir = aVenir.concat(passe);
+
+    console.log('total:',matchsLibresCache.length,'notDone:',notDone.length,'enCours:',enCours.length,'aVenir:',aVenir.length,'joues:',joues.length);
 
     el.innerHTML = '';
 
