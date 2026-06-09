@@ -1831,21 +1831,79 @@ function courtCls(court) {
 }
 
 function buildMLCard(m, membres) {
-  var d = m.date ? new Date(m.date+'T12:00:00') : null;
-  var dStr = d ? d.getDate()+' '+['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][d.getMonth()] : '';
-  var n1 = mlName(m.p1_id, m.p1_nom, membres);
-  var n2 = mlName(m.p2_id, m.p2_nom, membres);
-  var scores = m.scores ? (Array.isArray(m.scores)?m.scores:JSON.parse(m.scores||'[]')) : [];
-  var scoreStr = scores.length ? scores.map(function(s){return s[0]+'-'+s[1];}).join(', ') : '';
-  return '<div class="match-card">'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
-    +'<span class="court-badge '+courtCls(m.court)+'">'+m.court+'</span>'
-    +'<span style="font-size:12px;color:var(--text-muted)">'+dStr+(m.heure?' · '+m.heure:'')+'</span>'
-    +(m.note?'<span style="font-size:11px;color:var(--text-hint)">'+m.note+'</span>':'')
-    +'</div>'
-    +'<div class="match-players"><div class="team">'+n1+'</div><span class="vs-lbl">vs</span><div class="team" style="text-align:right">'+n2+'</div></div>'
-    +(m.done?'<div style="text-align:center;background:var(--accent-light);border-radius:var(--radius-sm);padding:5px;font-size:12px;color:var(--accent-dark);font-weight:600;">✓ Terminé — '+scoreStr+'</div>':'')
-    +'</div>';
+  try {
+    var card = document.createElement('div');
+    card.className = 'match-card';
+    card.style.marginBottom = '10px';
+
+    // Date + court
+    var dStr = '';
+    if(m.date) {
+      var d = new Date(m.date+'T12:00:00');
+      if(!isNaN(d.getTime())) {
+        var mn = ['jan','fev','mar','avr','mai','jun','jul','aou','sep','oct','nov','dec'];
+        dStr = d.getDate()+' '+mn[d.getMonth()];
+      }
+    }
+    var n1 = m.p1_nom || (m.p1_id ? (function(){ var mb=membres.find(function(x){return x.id===m.p1_id;}); return mb?mb.prenom+' '+mb.nom:'?'; })() : '—');
+    var n2 = m.p2_nom || (m.p2_id ? (function(){ var mb=membres.find(function(x){return x.id===m.p2_id;}); return mb?mb.prenom+' '+mb.nom:'?'; })() : '—');
+    var cls = courtCls(m.court);
+
+    card.innerHTML = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">'
+      +'<span class="court-badge '+cls+'">'+(m.court||'')+'</span>'
+      +'<span style="font-size:12px;color:var(--text-muted);">'+dStr+(m.heure?' · '+m.heure:'')+'</span>'
+      +(m.note?'<span style="font-size:11px;color:var(--text-hint);">'+m.note+'</span>':'')
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;margin-bottom:8px;">'
+      +'<div style="flex:1">'+n1+'</div>'
+      +'<span style="font-size:11px;color:var(--text-hint);">vs</span>'
+      +'<div style="flex:1;text-align:right;">'+n2+'</div>'
+      +'</div>';
+
+    if(m.done) {
+      var scores = m.scores ? (Array.isArray(m.scores)?m.scores:JSON.parse(m.scores||'[]')) : [];
+      var scoreStr = scores.length ? scores.map(function(s){return s[0]+'-'+s[1];}).join(', ') : '';
+      card.innerHTML += '<div style="text-align:center;background:var(--accent-light);border-radius:var(--radius-sm);padding:5px;font-size:12px;color:var(--accent-dark);font-weight:600;">Termine — '+scoreStr+'</div>';
+    }
+
+    // Delete button
+    var canDel = isOrga() || (currentUser && (m.p1_id===currentUser.id || m.p2_id===currentUser.id));
+    if(canDel && !m.done) {
+      var delWrap = document.createElement('div');
+      delWrap.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+      var delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-ghost btn-sm';
+      delBtn.style.color = 'var(--red)';
+      delBtn.textContent = 'Supprimer';
+      var confirmDiv = document.createElement('div');
+      confirmDiv.style.cssText = 'display:none;margin-top:6px;background:var(--red-light);border-radius:4px;padding:8px;display:none;align-items:center;gap:8px;';
+      delBtn.addEventListener('click', function(){
+        confirmDiv.style.display = confirmDiv.style.display==='flex'?'none':'flex';
+      });
+      var ouiBtn = document.createElement('button');
+      ouiBtn.className = 'btn btn-danger btn-sm';
+      ouiBtn.textContent = 'Oui supprimer';
+      ouiBtn.style.cssText = 'background:var(--red);color:white;border-color:var(--red);';
+      (function(mid){ ouiBtn.addEventListener('click', function(){ supprimerMatchLibre(mid); }); })(m.id);
+      var nonBtn = document.createElement('button');
+      nonBtn.className = 'btn btn-ghost btn-sm';
+      nonBtn.textContent = 'Non';
+      nonBtn.addEventListener('click', function(){ confirmDiv.style.display='none'; });
+      confirmDiv.appendChild(document.createTextNode('Supprimer ce match ? '));
+      confirmDiv.appendChild(ouiBtn);
+      confirmDiv.appendChild(nonBtn);
+      delWrap.appendChild(delBtn);
+      card.appendChild(delWrap);
+      card.appendChild(confirmDiv);
+    }
+
+    return card;
+  } catch(ex) {
+    console.error('buildMLCard error:', ex, m);
+    var err = document.createElement('div');
+    err.textContent = 'Erreur carte match';
+    return err;
+  }
 }
 
 function toggleMLExt(which) {
