@@ -363,8 +363,8 @@ tr:last-child td{border-bottom:none;}
       <div style="font-size:12px;color:var(--text-muted);" id="resa-date-label"></div>
     </div>
     <div class="row">
-      <div class="field"><label>Heure début</label><input type="time" id="resa-debut" value="10:00"></div>
-      <div class="field"><label>Heure fin</label><input type="time" id="resa-fin" value="11:00"></div>
+      <div class="field"><label>Heure début</label><input type="time" id="resa-debut" value="10:00" step="900"></div>
+      <div class="field"><label>Heure fin</label><input type="time" id="resa-fin" value="11:00" step="900"></div>
     </div>
     <div style="margin-bottom:12px;"><label>Note (optionnel)</label><input type="text" id="resa-note" placeholder="Ex: entraînement, cours..."></div>
     <div id="resa-error" style="color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px;"></div>
@@ -2264,9 +2264,15 @@ async function loadReservations() {
     var weekLabel = d0.getDate()+' '+monthsFull[d0.getMonth()]+' - '+d6.getDate()+' '+monthsFull[d6.getMonth()]+' '+d6.getFullYear();
     var DAY_NAMES = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
-    // Hours 7h -> 23h
-    var HOURS = [];
-    for(var h=7;h<23;h++) HOURS.push(h);
+    // Time slots 7h -> 23h by 15min
+    var SLOTS = [];
+    for(var h=7;h<23;h++) {
+      SLOTS.push({h:h, m:0,  label:h+'h00'});
+      SLOTS.push({h:h, m:15, label:h+'h15'});
+      SLOTS.push({h:h, m:30, label:h+'h30'});
+      SLOTS.push({h:h, m:45, label:h+'h45'});
+    }
+    var HOURS = SLOTS; // alias
 
     var currentCourtIdx = 0;
 
@@ -2287,10 +2293,10 @@ async function loadReservations() {
       cornerTh.style.cssText = 'width:44px;min-width:44px;background:var(--bg);border:1px solid var(--border);padding:4px;position:sticky;left:0;z-index:2;';
       hrow.appendChild(cornerTh);
 
-      HOURS.forEach(function(h) {
+      SLOTS.forEach(function(slot) {
         var th = document.createElement('th');
-        th.style.cssText = 'background:var(--accent-dark);color:white;border:1px solid #2d5a1b;padding:4px 2px;text-align:center;font-size:9px;font-weight:600;white-space:nowrap;';
-        th.textContent = h+'h';
+        th.style.cssText = 'background:'+(slot.m===0?'var(--accent-dark)':'#2a5016')+';color:white;border:1px solid #2d5a1b;padding:3px 1px;text-align:center;font-size:8px;font-weight:'+(slot.m===0?'700':'400')+';white-space:nowrap;min-width:28px;';
+        th.textContent = (slot.h<10?'0':'')+slot.h+'h'+(slot.m===0?'':''+slot.m);
         hrow.appendChild(th);
       });
       thead.appendChild(hrow);
@@ -2311,10 +2317,14 @@ async function loadReservations() {
         dayTd.innerHTML = DAY_NAMES[di]+'<br><span style="font-size:9px;font-weight:400">'+d.getDate()+' '+months[d.getMonth()]+'</span>';
         row.appendChild(dayTd);
 
-        // Hour cells
-        HOURS.forEach(function(h) {
-          var hStr = (h<10?'0':'')+h+':00';
-          var hEnd = (h+1<10?'0':'')+(h+1)+':00';
+        // Time cells (15min slots)
+        SLOTS.forEach(function(slot) {
+          var h = slot.h, m = slot.m;
+          var hStr = (h<10?'0':'')+h+':'+(m===0?'00':m);
+          var nextM = m+15;
+          var nextH = h + (nextM>=60?1:0);
+          nextM = nextM>=60?0:nextM;
+          var hEnd = (nextH<10?'0':'')+nextH+':'+(nextM===0?'00':nextM);
 
           // Find reservations that overlap this hour slot
           var dayResas = resaCache.filter(function(r){
@@ -2372,8 +2382,9 @@ async function loadReservations() {
                 var dd = new Date(dStr+'T12:00:00');
                 document.getElementById('resa-court-label').textContent = court.icon+' '+cLabel;
                 document.getElementById('resa-date-label').textContent = dd.getDate()+' '+monthsFull[dd.getMonth()]+' '+dd.getFullYear();
-                document.getElementById('resa-debut').value = (startH<10?'0':'')+startH+':00';
-                document.getElementById('resa-fin').value   = (startH+1<10?'0':'')+(startH+1)+':00';
+                document.getElementById('resa-debut').value = (startH<10?'0':'')+startH+':'+(startM===0?'00':startM);
+                var endM = startM+60; var endH = startH+(endM>=60?1:0); endM=endM>=60?endM-60:endM;
+                document.getElementById('resa-fin').value = (endH<10?'0':'')+endH+':'+(endM===0?'00':endM);
                 document.getElementById('resa-error').textContent = '';
                 openModal('modal-resa');
               });
