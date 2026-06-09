@@ -1869,32 +1869,50 @@ function buildMLCard(m, membres) {
     // Delete button
     var canDel = isOrga() || (currentUser && (m.p1_id===currentUser.id || m.p2_id===currentUser.id));
     if(canDel && !m.done) {
-      var delWrap = document.createElement('div');
-      delWrap.style.cssText = 'display:flex;justify-content:flex-end;margin-top:6px;';
+      var delBar = document.createElement('div');
+      delBar.style.cssText = 'margin-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+
       var delBtn = document.createElement('button');
       delBtn.className = 'btn btn-ghost btn-sm';
       delBtn.style.color = 'var(--red)';
       delBtn.textContent = 'Supprimer';
-      var confirmDiv = document.createElement('div');
-      confirmDiv.style.cssText = 'margin-top:6px;background:var(--red-light);border-radius:4px;padding:8px;align-items:center;gap:8px;'; confirmDiv.style.display='none';
-      delBtn.addEventListener('click', function(){
-        confirmDiv.style.display = confirmDiv.style.display==='flex'?'none':'flex';
-      });
+
+      var confirmBar = document.createElement('div');
+      confirmBar.style.cssText = 'display:none;align-items:center;gap:6px;background:var(--red-light);padding:6px 10px;border-radius:var(--radius-sm);width:100%;';
+
+      var confirmTxt = document.createElement('span');
+      confirmTxt.style.cssText = 'flex:1;font-size:12px;color:var(--red);font-weight:500;';
+      confirmTxt.textContent = 'Supprimer ce match ?';
+
       var ouiBtn = document.createElement('button');
-      ouiBtn.className = 'btn btn-danger btn-sm';
+      ouiBtn.className = 'btn btn-sm';
+      ouiBtn.style.cssText = 'background:var(--red);color:white;border:none;font-family:inherit;cursor:pointer;padding:5px 12px;border-radius:4px;font-weight:600;';
       ouiBtn.textContent = 'Oui';
-      ouiBtn.style.cssText = 'background:var(--red);color:white;border-color:var(--red);';
-      (function(mid){ ouiBtn.addEventListener('click', function(){ supprimerMatchLibre(mid); }); })(m.id);
+      ouiBtn.setAttribute('data-mid', m.id);
+      ouiBtn.addEventListener('click', function(){
+        var mid = this.getAttribute('data-mid');
+        supprimerMatchLibre(mid);
+      });
+
       var nonBtn = document.createElement('button');
       nonBtn.className = 'btn btn-ghost btn-sm';
       nonBtn.textContent = 'Non';
-      nonBtn.addEventListener('click', function(){ confirmDiv.style.display='none'; });
-      confirmDiv.appendChild(document.createTextNode('Supprimer ce match ? '));
-      confirmDiv.appendChild(ouiBtn);
-      confirmDiv.appendChild(nonBtn);
-      delWrap.appendChild(delBtn);
-      card.appendChild(delWrap);
-      card.appendChild(confirmDiv);
+      nonBtn.addEventListener('click', function(){
+        confirmBar.style.display = 'none';
+        delBtn.style.display = '';
+      });
+
+      delBtn.addEventListener('click', function(){
+        delBtn.style.display = 'none';
+        confirmBar.style.display = 'flex';
+      });
+
+      confirmBar.appendChild(confirmTxt);
+      confirmBar.appendChild(ouiBtn);
+      confirmBar.appendChild(nonBtn);
+      delBar.appendChild(delBtn);
+      delBar.appendChild(confirmBar);
+      card.appendChild(delBar);
     }
 
     return card;
