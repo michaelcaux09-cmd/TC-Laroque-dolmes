@@ -1187,6 +1187,11 @@ async function genererMatchs() {
   var sc = parseInt(document.getElementById('tj-sets').value)||3;
   var newMatchs = [];
 
+  // Sort players best rank first
+  var sorted = currentJoueurs.slice().sort(function(a,b){
+    return rankToNum(b.classement) - rankToNum(a.classement);
+  });
+
   // FFT rank groups - absolute tour level
   function getRankLevel(rank) {
     if(!rank||rank==='NC'||rank==='40') return 1;
@@ -1203,13 +1208,8 @@ async function genererMatchs() {
   // Entry tour = relative level (best player gets most byes)
   function getRankTour(rank) {
     var absolute = getRankLevel(rank);
-    return absolute - minLevel + 1; // relative: weakest = tour 1, best = higher tour
+    return absolute - minLevel + 1;
   }
-
-  // Sort players best rank first
-  var sorted = currentJoueurs.slice().sort(function(a,b){
-    return rankToNum(b.classement) - rankToNum(a.classement);
-  });
 
   if(tournoisFormat === 'roundrobin') {
     for(var i=0;i<sorted.length;i++)
