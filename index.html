@@ -1830,6 +1830,17 @@ function courtCls(court) {
   return 'court-ext1';
 }
 
+
+async function supprimerMatchLibre(id) {
+  try {
+    await sbDelete('matchs_libres', 'id=eq.'+id);
+    matchsLibresCache = matchsLibresCache.filter(function(m){ return m.id !== id; });
+    loadMatchsLibres();
+  } catch(e) {
+    alert('Erreur suppression: ' + e.message);
+  }
+}
+
 function buildMLCard(m, membres) {
   try {
     var card = document.createElement('div');
