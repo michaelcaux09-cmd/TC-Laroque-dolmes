@@ -1198,118 +1198,109 @@ async function genererMatchs() {
         newMatchs.push({tournoi_id:currentTournoi.id,round:1,p1_id:sorted[i].id,p2_id:sorted[j].id,scores:'[]',sets_count:sc,bye:false});
   } else {
 
-    // ── Règle FFT : niveau absolu par classement ──
+    // ── Niveau FFT par classement ──
     function getRankLevel(rank) {
       if(!rank||rank==='NC'||rank==='40') return 1;
       if(rank.startsWith('30')) return 2;
       if(rank.startsWith('15')) return 3;
-      return 4; // 5/x et mieux
+      return 4;
     }
 
-    // Niveau min présent = devient Tour 1
+    // Tour d'entrée de chaque joueur
     var minLevel = 4;
+    sorted.forEach(function(p){ var l=getRankLevel(p.classement); if(l<minLevel) minLevel=l; });
+    function entryTour(rank){ return getRankLevel(rank)-minLevel+1; }
+
+    var maxEntry = 1;
+    sorted.forEach(function(p){ var e=entryTour(p.classement); if(e>maxEntry) maxEntry=e; });
+
+    // Grouper par tour d'entrée
+    var groups = {};
+    for(var r=1;r<=maxEntry;r++) groups[r]=[];
     sorted.forEach(function(p){
-      var l = getRankLevel(p.classement);
-      if(l < minLevel) minLevel = l;
+      p.entry = entryTour(p.classement);
+      groups[p.entry].push(p);
     });
 
-    // Tour d'entrée relatif
-    function entryRound(rank) {
-      return getRankLevel(rank) - minLevel + 1;
-    }
-
-    // Tour max d'entrée = nombre de tours à créer avant la finale
-    var maxEntry = 1;
-    sorted.forEach(function(p){ var e=entryRound(p.classement); if(e>maxEntry) maxEntry=e; });
-
-    // Taille du tableau : doit être >= 2^maxEntry * nb joueurs entrant au tour 1 / 2
+    // Taille du tableau
     var n = sorted.length;
     var tableSize = 2;
     while(tableSize < n) tableSize *= 2;
-    // S'assurer que le tableau est assez grand pour les tours d'entrée
-    while(Math.log2(tableSize) < maxEntry) tableSize *= 2;
+    var totalRounds = Math.round(Math.log(tableSize)/Math.log(2));
 
-    var totalRounds = Math.log2(tableSize); // ex: 16 joueurs = 4 tours
-
-    // Assigner seeds (tops classés)
-    var maxSeeds = tableSize <= 8 ? 2 : tableSize <= 16 ? 4 : 8;
+    // Seeds
+    var maxSeeds = tableSize<=8?2:tableSize<=16?4:8;
     var seedCount = Math.min(maxSeeds, n);
     for(var i=0;i<sorted.length;i++){
-      sorted[i].seed = i < seedCount ? i+1 : null;
-      sorted[i].entry = entryRound(sorted[i].classement);
+      sorted[i].seed = i<seedCount?i+1:null;
       await sbPatch('joueurs_tournoi',{seed:sorted[i].seed},'id=eq.'+sorted[i].id);
     }
 
-    // Séparer joueurs par tour d'entrée
-    var byEntry = {};
-    for(var r=1;r<=maxEntry;r++) byEntry[r]=[];
-    sorted.forEach(function(p){ byEntry[p.entry].push(p); });
+    // ── Placement FFT dans le tableau ──
+    // Les joueurs entrant au tour maxEntry = têtes (Cédric 15/1 entre au tour 3 si max=3)
+    // Les joueurs entrant au tour 1 = les plus faibles
+    // Principe: on construit un tableau où chaque "branche" a un joueur fort en tête
 
-    // ── Construction du tableau ──
-    // Tour 1 : joueurs entrant au tour 1 jouent entre eux
-    // Les joueurs entrant plus tard reçoivent autant de byes que nécessaire
-
-    // Placer dans slots FFT
+    // Placement dans slots : alterner les groupes pour équilibrer
     var slots = new Array(tableSize).fill(null);
-    var seeds = sorted.slice(0, seedCount);
-    var rest = shuffle(sorted.slice(seedCount));
 
-    if(seedCount>=1) slots[0]=seeds[0];
-    if(seedCount>=2) slots[tableSize-1]=seeds[1];
-    if(seedCount>=4){
-      var s34=shuffle([seeds[2],seeds[3]]);
-      slots[Math.floor(tableSize/4)]=s34[0];
-      slots[Math.floor(3*tableSize/4)]=s34[1];
-    }
-    if(seedCount>=8){
-      var s58=shuffle(seeds.slice(4,8));
-      [Math.floor(tableSize/8),Math.floor(3*tableSize/8),Math.floor(5*tableSize/8),Math.floor(7*tableSize/8)].forEach(function(pos,i){
-        if(s58[i]) slots[pos]=s58[i];
-      });
-    }
-    var ri=0;
+    // Placer d'abord les joueurs les mieux classés (entrée tardive) dans les positions de tête de série
+    var seedPositions = [0, tableSize-1];
+    if(seedCount>=4) seedPositions = seedPositions.concat([Math.floor(tableSize/4), Math.floor(3*tableSize/4)]);
+    if(seedCount>=8) seedPositions = seedPositions.concat([Math.floor(tableSize/8),Math.floor(3*tableSize/8),Math.floor(5*tableSize/8),Math.floor(7*tableSize/8)]);
+
+    // Placer les seeds en premier
+    var seedsSorted = sorted.slice(0, seedCount);
+    var seedPosShuffled = shuffle(seedPositions.slice(2)); // T1 fixe, T2 fixe, T3/T4 aléatoires
+    if(seedCount>=1) slots[0] = seedsSorted[0];
+    if(seedCount>=2) slots[tableSize-1] = seedsSorted[1];
+    if(seedCount>=3 && seedPosShuffled[0]!==undefined) slots[seedPosShuffled[0]] = seedsSorted[2];
+    if(seedCount>=4 && seedPosShuffled[1]!==undefined) slots[seedPosShuffled[1]] = seedsSorted[3];
+
+    // Placer le reste aléatoirement
+    var remaining = shuffle(sorted.filter(function(p){ return !p.seed; }));
+    var ri = 0;
     for(var i=0;i<tableSize;i++){
-      if(!slots[i] && ri<rest.length) slots[i]=rest[ri++];
+      if(!slots[i] && ri<remaining.length) slots[i]=remaining[ri++];
     }
 
-    // Construire les matchs Tour 1
-    // Règle FFT : seuls les joueurs du même tour d'entrée se rencontrent au Tour 1
-    // Les mieux classés (entrée tour 2, 3...) reçoivent autant de byes que nécessaire
+    // ── Générer les matchs ──
+    // Tour 1 : chaque paire de slots
     for(var i=0;i<slots.length;i+=2){
       var pa=slots[i], pb=slots[i+1];
       if(!pa&&!pb) continue;
 
-      var paEntry = pa ? (pa.entry||1) : 0;
-      var pbEntry = pb ? (pb.entry||1) : 0;
-
-      if(!pa || !pb) {
-        // Un seul joueur dans ce slot = bye automatique
-        var pl = pa||pb;
+      if(!pa||!pb){
+        // Bye (slot vide = joueur manquant)
+        var pl=pa||pb;
         newMatchs.push({tournoi_id:currentTournoi.id,round:1,
           p1_id:pl.id,p2_id:null,winner_id:pl.id,
           scores:'[]',sets_count:sc,bye:true,
           seed1:pl.seed||null,seed2:null});
-      } else if(paEntry===1 && pbEntry===1) {
-        // Les deux entrent au tour 1 → ils jouent ensemble
-        newMatchs.push({tournoi_id:currentTournoi.id,round:1,
-          p1_id:pa.id,p2_id:pb.id,winner_id:null,
-          scores:'[]',sets_count:sc,bye:false,
-          seed1:pa.seed||null,seed2:pb.seed||null});
       } else {
-        // Au moins un joueur entre après le tour 1 → chacun reçoit un bye séparé
-        // Ils se retrouveront au tour correspondant à leur niveau
-        newMatchs.push({tournoi_id:currentTournoi.id,round:1,
-          p1_id:pa.id,p2_id:null,winner_id:pa.id,
-          scores:'[]',sets_count:sc,bye:true,
-          seed1:pa.seed||null,seed2:null});
-        newMatchs.push({tournoi_id:currentTournoi.id,round:1,
-          p1_id:pb.id,p2_id:null,winner_id:pb.id,
-          scores:'[]',sets_count:sc,bye:true,
-          seed1:null,seed2:pb.seed||null});
+        var ea=pa.entry||1, eb=pb.entry||1;
+        if(ea===1 && eb===1){
+          // Même niveau : ils jouent
+          newMatchs.push({tournoi_id:currentTournoi.id,round:1,
+            p1_id:pa.id,p2_id:pb.id,winner_id:null,
+            scores:'[]',sets_count:sc,bye:false,
+            seed1:pa.seed||null,seed2:pb.seed||null});
+        } else {
+          // Niveaux différents : chacun bye au tour 1
+          // Le meilleur classé aura encore des byes aux tours suivants via advanceByes
+          newMatchs.push({tournoi_id:currentTournoi.id,round:1,
+            p1_id:pa.id,p2_id:null,winner_id:pa.id,
+            scores:'[]',sets_count:sc,bye:true,
+            seed1:pa.seed||null,seed2:null});
+          newMatchs.push({tournoi_id:currentTournoi.id,round:1,
+            p1_id:pb.id,p2_id:null,winner_id:pb.id,
+            scores:'[]',sets_count:sc,bye:true,
+            seed1:null,seed2:pb.seed||null});
+        }
       }
     }
 
-    // Placeholder matchs pour tours suivants
+    // Rounds suivants (placeholders)
     var r=2, count=Math.floor(tableSize/4);
     while(count>=1){
       for(var i=0;i<count;i++)
@@ -1324,17 +1315,35 @@ async function genererMatchs() {
       var rows=await sbPost('matchs_tournoi',newMatchs[i]);
       if(rows&&rows.length) currentMatchs.push(rows[0]);
     }
+    // Avancer les byes — y compris les byes multiples pour les mieux classés
     await advanceByes();
+    await advanceByes(); // 2x pour les joueurs entrant au tour 3
+    await advanceByes(); // 3x pour les joueurs entrant au tour 4
     await sbPatch('tournois',{statut:'en_cours',format:tournoisFormat},'id=eq.'+currentTournoi.id);
     currentTournoi.statut='en_cours'; currentTournoi.format=tournoisFormat;
+    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
     showTournoiTab('matchs');
   } catch(e){ alert('Erreur generation: '+e.message); }
 }
 
 async function advanceByes() {
-  var byes = currentMatchs.filter(function(m){ return m.bye && m.winner_id; });
-  for(var i=0;i<byes.length;i++){
-    await advanceWinner(byes[i].winner_id, byes[i].round);
+  // Loop multiple times to handle players with multiple consecutive byes
+  for(var pass=0; pass<5; pass++) {
+    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+    var byes = currentMatchs.filter(function(m){ return m.bye && m.winner_id; });
+    var advanced = false;
+    for(var i=0;i<byes.length;i++){
+      var byeM = byes[i];
+      // Check if next round already has this player
+      var nextRound = byeM.round+1;
+      var nextMatchs = currentMatchs.filter(function(m){ return m.round===nextRound && !m.bye; });
+      var alreadyIn = nextMatchs.some(function(m){ return m.p1_id===byeM.winner_id || m.p2_id===byeM.winner_id; });
+      if(!alreadyIn){
+        await advanceWinner(byeM.winner_id, byeM.round);
+        advanced = true;
+      }
+    }
+    if(!advanced) break;
   }
   currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
 }
