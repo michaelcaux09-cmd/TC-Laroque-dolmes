@@ -2251,111 +2251,209 @@ async function loadReservations() {
   var el = document.getElementById('resa-content');
   if(!el) return;
   el.innerHTML = '<div class="loading-inline">Chargement...</div>';
-
   var days = getWeekDates(resaWeekOffset);
   var dateFrom = days[0], dateTo = days[6];
 
   try {
-    resaCache = await sbGet('reservations',
-      'date=gte.'+dateFrom+'&date=lte.'+dateTo+'&order=date.asc,heure_debut.asc') || [];
-
+    resaCache = await sbGet('reservations','date=gte.'+dateFrom+'&date=lte.'+dateTo+'&order=date.asc,heure_debut.asc') || [];
     var today = new Date().toISOString().split('T')[0];
+    var months = ['jan','fev','mar','avr','mai','jun','jul','aou','sep','oct','nov','dec'];
+    var monthsFull = ['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
     var d0 = new Date(days[0]+'T12:00:00');
     var d6 = new Date(days[6]+'T12:00:00');
-    var months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-    var weekLabel = d0.getDate()+' '+months[d0.getMonth()]+' — '+d6.getDate()+' '+months[d6.getMonth()]+' '+d6.getFullYear();
+    var weekLabel = d0.getDate()+' '+monthsFull[d0.getMonth()]+' - '+d6.getDate()+' '+monthsFull[d6.getMonth()]+' '+d6.getFullYear();
+    var DAY_NAMES = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
-    var html = '<div class="week-nav">'
-      +'<button onclick="resaWeekOffset--;loadReservations()">← Préc.</button>'
-      +'<div class="week-label">'+weekLabel+'</div>'
-      +'<button onclick="resaWeekOffset++;loadReservations()">Suiv. →</button>'
-      +'</div>';
+    // Hours 7h -> 23h
+    var HOURS = [];
+    for(var h=7;h<23;h++) HOURS.push(h);
 
-    if(isOrga()) {
-      html += '<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">'
-        +'<button class="btn btn-danger btn-sm" onclick="openModal(\'modal-bloquer\')">🚫 Bloquer un créneau</button>'
-        +'</div>';
-    }
+    var currentCourtIdx = 0;
 
-    el.innerHTML = html;
+    function buildCourtTable(courtIdx) {
+      var court = COURTS_LIST[courtIdx];
+      var tbl = document.createElement('div');
+      tbl.style.cssText = 'overflow-x:auto;';
 
-    // Build one grid per court
-    COURTS_LIST.forEach(function(court) {
-      var grid = document.createElement('div');
-      grid.className = 'court-grid';
+      var table = document.createElement('table');
+      table.style.cssText = 'border-collapse:collapse;min-width:600px;width:100%;table-layout:fixed;font-size:11px;';
 
-      var header = document.createElement('div');
-      header.className = 'court-grid-header';
-      header.innerHTML = '<span class="court-badge '+court.cls+'">'+court.icon+' '+court.id.toUpperCase()+'</span>'
-        +'<span>'+court.label+'</span>';
-      grid.appendChild(header);
+      // Header row - hours
+      var thead = document.createElement('thead');
+      var hrow = document.createElement('tr');
 
-      var dayCols = document.createElement('div');
-      dayCols.className = 'day-cols';
+      // First cell - empty corner
+      var cornerTh = document.createElement('th');
+      cornerTh.style.cssText = 'width:44px;min-width:44px;background:var(--bg);border:1px solid var(--border);padding:4px;position:sticky;left:0;z-index:2;';
+      hrow.appendChild(cornerTh);
 
-      days.forEach(function(dateStr) {
-        var col = document.createElement('div');
-        col.className = 'day-col';
+      HOURS.forEach(function(h) {
+        var th = document.createElement('th');
+        th.style.cssText = 'background:var(--accent-dark);color:white;border:1px solid #2d5a1b;padding:4px 2px;text-align:center;font-size:9px;font-weight:600;white-space:nowrap;';
+        th.textContent = h+'h';
+        hrow.appendChild(th);
+      });
+      thead.appendChild(hrow);
+      table.appendChild(thead);
 
-        var hdr = document.createElement('div');
-        hdr.className = 'day-col-header'+(dateStr===today?' today':'');
-        hdr.innerHTML = formatDayHeader(dateStr);
-        col.appendChild(hdr);
+      // Body - one row per day
+      var tbody = document.createElement('tbody');
+      days.forEach(function(dateStr, di) {
+        var isToday = dateStr === today;
+        var isPast  = dateStr < today;
+        var row = document.createElement('tr');
+        row.style.background = isToday ? '#f0f7ed' : '';
 
-        var slotsDiv = document.createElement('div');
-        slotsDiv.className = 'day-slots';
+        // Day label cell
+        var dayTd = document.createElement('td');
+        dayTd.style.cssText = 'background:'+(isToday?'var(--accent-light)':'var(--bg)')+';border:1px solid var(--border);padding:4px 3px;text-align:center;font-weight:600;font-size:10px;color:'+(isToday?'var(--accent-dark)':'var(--text-muted)')+';position:sticky;left:0;z-index:1;white-space:nowrap;';
+        var d = new Date(dateStr+'T12:00:00');
+        dayTd.innerHTML = DAY_NAMES[di]+'<br><span style="font-size:9px;font-weight:400">'+d.getDate()+' '+months[d.getMonth()]+'</span>';
+        row.appendChild(dayTd);
 
-        // Get reservations for this court/day
-        var dayResas = resaCache.filter(function(r){
-          return r.court===court.label && r.date===dateStr;
-        });
+        // Hour cells
+        HOURS.forEach(function(h) {
+          var hStr = (h<10?'0':'')+h+':00';
+          var hEnd = (h+1<10?'0':'')+(h+1)+':00';
 
-        dayResas.forEach(function(r) {
-          var slot = document.createElement('div');
-          var isBlocked = r.bloque;
-          var isMine = currentUser && r.membre_id===currentUser.id;
-          slot.className = 'slot '+(isBlocked?'slot-blocked':isMine?'slot-mine':'slot-other');
-          slot.innerHTML = (r.heure_debut||'').substring(0,5)+'–'+(r.heure_fin||'').substring(0,5)
-            +(r.nom_membre?'<br><span style="opacity:0.8">'+r.nom_membre.split(' ')[0]+'</span>':'')
-            +(r.note?'<br><span style="opacity:0.7;font-size:9px">'+r.note+'</span>':'');
-          // Allow delete if mine or admin/orga
-          if(!isBlocked && (isMine || isOrga())) {
-            slot.title = 'Cliquer pour annuler';
-            (function(rid){ slot.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
-          } else if(isBlocked && isOrga()) {
-            slot.title = 'Cliquer pour débloquer';
-            (function(rid){ slot.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
+          // Find reservations that overlap this hour slot
+          var dayResas = resaCache.filter(function(r){
+            return r.court===court.label && r.date===dateStr;
+          });
+
+          // Find reservation covering this hour
+          var covering = dayResas.filter(function(r){
+            return timeToMin(r.heure_debut) < timeToMin(hEnd) && timeToMin(r.heure_fin) > timeToMin(hStr);
+          });
+
+          var td = document.createElement('td');
+          td.style.cssText = 'border:1px solid var(--border);padding:1px;text-align:center;vertical-align:middle;position:relative;min-width:38px;height:42px;';
+
+          if(covering.length > 0) {
+            var r = covering[0];
+            var isBlocked = r.bloque;
+            var isMine = currentUser && r.membre_id===currentUser.id;
+            var isFirst = timeToMin(r.heure_debut) >= timeToMin(hStr) && timeToMin(r.heure_debut) < timeToMin(hEnd);
+
+            td.style.background = isBlocked?'#fdf0f0':isMine?'#d4edda':'#fff3cd';
+            td.style.borderColor = isBlocked?'#e8a0a0':isMine?'var(--accent)':'#e8d08a';
+
+            if(isFirst) {
+              // Show info only on first cell
+              var nom = r.nom_membre ? r.nom_membre.split(' ')[0] : '';
+              var debut = (r.heure_debut||'').substring(0,5);
+              var fin   = (r.heure_fin||'').substring(0,5);
+              td.innerHTML = '<div style="font-size:9px;font-weight:700;color:'+(isBlocked?'#8b1a1a':isMine?'var(--accent-dark)':'#854f0b')+'">'+debut+'-'+fin+'</div>'
+                +'<div style="font-size:8px;color:'+(isBlocked?'#8b1a1a':isMine?'var(--accent)':'#854f0b')+'">'+nom+'</div>'
+                +(r.note?'<div style="font-size:8px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:36px;">'+r.note+'</div>':'');
+            } else {
+              // Continuation cell - just color
+              td.innerHTML = '';
+            }
+
+            if(!isBlocked && (isMine || isOrga())) {
+              td.style.cursor = 'pointer';
+              td.title = 'Cliquer pour annuler';
+              (function(rid){ td.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
+            } else if(isBlocked && isOrga()) {
+              td.style.cursor = 'pointer';
+              td.title = 'Cliquer pour debloquer';
+              (function(rid){ td.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
+            }
+          } else if(!isPast && isValide()) {
+            // Empty - reservable
+            td.style.cursor = 'pointer';
+            td.style.background = 'white';
+            td.title = 'Cliquer pour reserver '+h+'h';
+            (function(cLabel, dStr, startH){
+              td.addEventListener('click', function(){
+                currentResaCourt = cLabel;
+                currentResaDate  = dStr;
+                var dd = new Date(dStr+'T12:00:00');
+                document.getElementById('resa-court-label').textContent = court.icon+' '+cLabel;
+                document.getElementById('resa-date-label').textContent = dd.getDate()+' '+monthsFull[dd.getMonth()]+' '+dd.getFullYear();
+                document.getElementById('resa-debut').value = (startH<10?'0':'')+startH+':00';
+                document.getElementById('resa-fin').value   = (startH+1<10?'0':'')+(startH+1)+':00';
+                document.getElementById('resa-error').textContent = '';
+                openModal('modal-resa');
+              });
+            })(court.label, dateStr, h);
+
+            // Hover effect
+            td.addEventListener('mouseenter', function(){ this.style.background='var(--accent-light)'; });
+            td.addEventListener('mouseleave', function(){ this.style.background='white'; });
+          } else {
+            td.style.background = '#fafaf8';
           }
-          slotsDiv.appendChild(slot);
+
+          row.appendChild(td);
         });
-
-        // Add reservation button
-        if(isValide() && dateStr >= today) {
-          var addBtn = document.createElement('button');
-          addBtn.className = 'slot-add';
-          addBtn.textContent = '+ Réserver';
-          (function(cLabel, cCls, dStr){
-            addBtn.addEventListener('click', function(){
-              currentResaCourt = cLabel;
-              currentResaDate = dStr;
-              document.getElementById('modal-resa-title').textContent = 'Réserver — '+cLabel;
-              document.getElementById('resa-court-label').textContent = court.icon+' '+cLabel;
-              var dd = new Date(dStr+'T12:00:00');
-              document.getElementById('resa-date-label').textContent = dd.getDate()+' '+months[dd.getMonth()]+' '+dd.getFullYear();
-              document.getElementById('resa-error').textContent = '';
-              openModal('modal-resa');
-            });
-          })(court.label, court.cls, dateStr);
-          slotsDiv.appendChild(addBtn);
-        }
-
-        col.appendChild(slotsDiv);
-        dayCols.appendChild(col);
+        tbody.appendChild(row);
       });
 
-      grid.appendChild(dayCols);
-      el.appendChild(grid);
+      table.appendChild(tbody);
+      tbl.appendChild(table);
+      return tbl;
+    }
+
+    // Build page
+    el.innerHTML = '';
+
+    // Week nav
+    var nav = document.createElement('div');
+    nav.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;';
+    nav.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="resaWeekOffset--;loadReservations()">← Préc.</button>'
+      +'<div style="font-size:13px;font-weight:600;text-align:center;flex:1;">'+weekLabel+'</div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="resaWeekOffset++;loadReservations()">Suiv. →</button>';
+    el.appendChild(nav);
+
+    // Court switcher buttons
+    var switcher = document.createElement('div');
+    switcher.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
+    var tableWrap = document.createElement('div');
+
+    function switchCourt(idx) {
+      currentCourtIdx = idx;
+      switcher.querySelectorAll('button').forEach(function(b,i){
+        b.style.background = i===idx ? 'var(--accent)' : 'var(--surface)';
+        b.style.color = i===idx ? 'white' : 'var(--text)';
+        b.style.borderColor = i===idx ? 'var(--accent)' : 'var(--border)';
+        b.style.fontWeight = i===idx ? '600' : '400';
+      });
+      tableWrap.innerHTML = '';
+      tableWrap.appendChild(buildCourtTable(idx));
+    }
+
+    COURTS_LIST.forEach(function(court, idx) {
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm';
+      btn.style.cssText = 'border:1px solid var(--border);background:var(--surface);color:var(--text);';
+      btn.innerHTML = '<span class="court-badge '+court.cls+'" style="padding:1px 6px;font-size:10px;">'+court.icon+'</span> '+court.label;
+      btn.addEventListener('click', function(){ switchCourt(idx); });
+      switcher.appendChild(btn);
     });
+
+    el.appendChild(switcher);
+
+    // Bloquer button
+    if(isOrga()) {
+      var blkBtn = document.createElement('div');
+      blkBtn.style.cssText = 'text-align:right;margin-bottom:10px;';
+      blkBtn.innerHTML = '<button class="btn btn-danger btn-sm" onclick="openModal(\'modal-bloquer\')">🚫 Bloquer un créneau</button>';
+      el.appendChild(blkBtn);
+    }
+
+    // Legend
+    var legend = document.createElement('div');
+    legend.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;';
+    legend.innerHTML = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#d4edda;border:1px solid var(--accent);border-radius:2px;display:inline-block;"></span>Ma réservation</span>'
+      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#fff3cd;border:1px solid #e8d08a;border-radius:2px;display:inline-block;"></span>Autre membre</span>'
+      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#fdf0f0;border:1px solid #e8a0a0;border-radius:2px;display:inline-block;"></span>Bloqué</span>'
+      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:white;border:1px solid var(--border);border-radius:2px;display:inline-block;"></span>Libre</span>';
+    el.appendChild(legend);
+
+    el.appendChild(tableWrap);
+    switchCourt(0);
 
   } catch(e) {
     el.innerHTML = '<div class="empty"><span class="eico">⚠️</span>'+e.message+'</div>';
