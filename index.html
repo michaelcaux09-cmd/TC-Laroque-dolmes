@@ -363,8 +363,8 @@ tr:last-child td{border-bottom:none;}
       <div style="font-size:12px;color:var(--text-muted);" id="resa-date-label"></div>
     </div>
     <div class="row">
-      <div class="field"><label>Heure début</label><input type="time" id="resa-debut" value="10:00" step="900"></div>
-      <div class="field"><label>Heure fin</label><input type="time" id="resa-fin" value="11:00" step="900"></div>
+      <div class="field"><label>Heure début</label><input type="time" id="resa-debut" value="10:00"></div>
+      <div class="field"><label>Heure fin</label><input type="time" id="resa-fin" value="11:00"></div>
     </div>
     <div style="margin-bottom:12px;"><label>Note (optionnel)</label><input type="text" id="resa-note" placeholder="Ex: entraînement, cours..."></div>
     <div id="resa-error" style="color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px;"></div>
@@ -2263,211 +2263,162 @@ async function loadReservations() {
     var d6 = new Date(days[6]+'T12:00:00');
     var weekLabel = d0.getDate()+' '+monthsFull[d0.getMonth()]+' - '+d6.getDate()+' '+monthsFull[d6.getMonth()]+' '+d6.getFullYear();
     var DAY_NAMES = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-
-    // Time slots 7h -> 23h by 15min
-    var SLOTS = [];
-    for(var h=7;h<23;h++) {
-      SLOTS.push({h:h, m:0,  label:h+'h00'});
-      SLOTS.push({h:h, m:15, label:h+'h15'});
-      SLOTS.push({h:h, m:30, label:h+'h30'});
-      SLOTS.push({h:h, m:45, label:h+'h45'});
-    }
-    var HOURS = SLOTS; // alias
-
-    var currentCourtIdx = 0;
+    var HOURS = [];
+    for(var h=7;h<23;h++) HOURS.push(h);
 
     function buildCourtTable(courtIdx) {
       var court = COURTS_LIST[courtIdx];
-      var tbl = document.createElement('div');
-      tbl.style.cssText = 'overflow-x:auto;';
-
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'overflow-x:auto;';
       var table = document.createElement('table');
-      table.style.cssText = 'border-collapse:collapse;min-width:600px;width:100%;table-layout:fixed;font-size:11px;';
+      table.style.cssText = 'border-collapse:collapse;min-width:700px;width:100%;font-size:11px;';
 
-      // Header row - hours
+      // Header
       var thead = document.createElement('thead');
       var hrow = document.createElement('tr');
-
-      // First cell - empty corner
       var cornerTh = document.createElement('th');
-      cornerTh.style.cssText = 'width:44px;min-width:44px;background:var(--bg);border:1px solid var(--border);padding:4px;position:sticky;left:0;z-index:2;';
+      cornerTh.style.cssText = 'width:48px;min-width:48px;background:var(--bg);border:1px solid var(--border);padding:4px;position:sticky;left:0;z-index:2;';
       hrow.appendChild(cornerTh);
-
-      SLOTS.forEach(function(slot) {
+      HOURS.forEach(function(h) {
         var th = document.createElement('th');
-        th.style.cssText = 'background:'+(slot.m===0?'var(--accent-dark)':'#2a5016')+';color:white;border:1px solid #2d5a1b;padding:3px 1px;text-align:center;font-size:8px;font-weight:'+(slot.m===0?'700':'400')+';white-space:nowrap;min-width:28px;';
-        th.textContent = (slot.h<10?'0':'')+slot.h+'h'+(slot.m===0?'':''+slot.m);
+        th.style.cssText = 'background:var(--accent-dark);color:white;border:1px solid #2d5a1b;padding:5px 2px;text-align:center;font-size:9px;font-weight:700;white-space:nowrap;min-width:42px;';
+        th.textContent = h+'h';
         hrow.appendChild(th);
       });
       thead.appendChild(hrow);
       table.appendChild(thead);
 
-      // Body - one row per day
+      // Body
       var tbody = document.createElement('tbody');
       days.forEach(function(dateStr, di) {
         var isToday = dateStr === today;
         var isPast  = dateStr < today;
         var row = document.createElement('tr');
-        row.style.background = isToday ? '#f0f7ed' : '';
 
-        // Day label cell
+        // Day label
         var dayTd = document.createElement('td');
-        dayTd.style.cssText = 'background:'+(isToday?'var(--accent-light)':'var(--bg)')+';border:1px solid var(--border);padding:4px 3px;text-align:center;font-weight:600;font-size:10px;color:'+(isToday?'var(--accent-dark)':'var(--text-muted)')+';position:sticky;left:0;z-index:1;white-space:nowrap;';
+        dayTd.style.cssText = 'background:'+(isToday?'var(--accent-light)':'var(--bg)')+';border:1px solid var(--border);padding:4px 3px;text-align:center;font-weight:700;font-size:10px;color:'+(isToday?'var(--accent-dark)':'var(--text-muted)')+';position:sticky;left:0;z-index:1;white-space:nowrap;';
         var d = new Date(dateStr+'T12:00:00');
         dayTd.innerHTML = DAY_NAMES[di]+'<br><span style="font-size:9px;font-weight:400">'+d.getDate()+' '+months[d.getMonth()]+'</span>';
         row.appendChild(dayTd);
 
-        // Time cells (15min slots)
-        SLOTS.forEach(function(slot) {
-          var h = slot.h, m = slot.m;
-          var hStr = (h<10?'0':'')+h+':'+(m===0?'00':m);
-          var nextM = m+15;
-          var nextH = h + (nextM>=60?1:0);
-          nextM = nextM>=60?0:nextM;
-          var hEnd = (nextH<10?'0':'')+nextH+':'+(nextM===0?'00':nextM);
-
-          // Find reservations that overlap this hour slot
-          var dayResas = resaCache.filter(function(r){
-            return r.court===court.label && r.date===dateStr;
-          });
-
-          // Find reservation covering this hour
+        HOURS.forEach(function(h) {
+          var hStr = (h<10?'0':'')+h+':00';
+          var hEnd = (h+1<10?'0':'')+(h+1)+':00';
+          var dayResas = resaCache.filter(function(r){ return r.court===court.label && r.date===dateStr; });
           var covering = dayResas.filter(function(r){
             return timeToMin(r.heure_debut) < timeToMin(hEnd) && timeToMin(r.heure_fin) > timeToMin(hStr);
           });
 
           var td = document.createElement('td');
-          td.style.cssText = 'border:1px solid var(--border);padding:1px;text-align:center;vertical-align:middle;position:relative;min-width:38px;height:42px;';
+          td.style.cssText = 'border:1px solid var(--border);padding:2px;text-align:center;vertical-align:middle;height:44px;min-width:42px;';
 
           if(covering.length > 0) {
             var r = covering[0];
             var isBlocked = r.bloque;
             var isMine = currentUser && r.membre_id===currentUser.id;
             var isFirst = timeToMin(r.heure_debut) >= timeToMin(hStr) && timeToMin(r.heure_debut) < timeToMin(hEnd);
-
             td.style.background = isBlocked?'#fdf0f0':isMine?'#d4edda':'#fff3cd';
             td.style.borderColor = isBlocked?'#e8a0a0':isMine?'var(--accent)':'#e8d08a';
-
             if(isFirst) {
-              // Show info only on first cell
               var nom = r.nom_membre ? r.nom_membre.split(' ')[0] : '';
               var debut = (r.heure_debut||'').substring(0,5);
               var fin   = (r.heure_fin||'').substring(0,5);
               td.innerHTML = '<div style="font-size:9px;font-weight:700;color:'+(isBlocked?'#8b1a1a':isMine?'var(--accent-dark)':'#854f0b')+'">'+debut+'-'+fin+'</div>'
-                +'<div style="font-size:8px;color:'+(isBlocked?'#8b1a1a':isMine?'var(--accent)':'#854f0b')+'">'+nom+'</div>'
-                +(r.note?'<div style="font-size:8px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:36px;">'+r.note+'</div>':'');
-            } else {
-              // Continuation cell - just color
-              td.innerHTML = '';
+                +'<div style="font-size:9px;color:'+(isBlocked?'#8b1a1a':isMine?'var(--accent)':'#854f0b');
+              td.innerHTML += '">'+nom+'</div>'+(r.note?'<div style="font-size:8px;opacity:0.7;overflow:hidden;max-width:40px;white-space:nowrap;text-overflow:ellipsis;">'+r.note+'</div>':'');
             }
-
-            if(!isBlocked && (isMine || isOrga())) {
-              td.style.cursor = 'pointer';
-              td.title = 'Cliquer pour annuler';
-              (function(rid){ td.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
-            } else if(isBlocked && isOrga()) {
-              td.style.cursor = 'pointer';
-              td.title = 'Cliquer pour debloquer';
-              (function(rid){ td.addEventListener('click', function(){ supprimerResa(rid); }); })(r.id);
+            if((isMine||isOrga()) || (isBlocked&&isOrga())) {
+              td.style.cursor='pointer'; td.title='Cliquer pour annuler';
+              (function(rid){ td.addEventListener('click',function(){ supprimerResa(rid); }); })(r.id);
             }
           } else if(!isPast && isValide()) {
-            // Empty - reservable
-            td.style.cursor = 'pointer';
-            td.style.background = 'white';
-            td.title = 'Cliquer pour reserver '+h+'h';
-            (function(cLabel, dStr, startH){
-              td.addEventListener('click', function(){
-                currentResaCourt = cLabel;
-                currentResaDate  = dStr;
-                var dd = new Date(dStr+'T12:00:00');
-                document.getElementById('resa-court-label').textContent = court.icon+' '+cLabel;
-                document.getElementById('resa-date-label').textContent = dd.getDate()+' '+monthsFull[dd.getMonth()]+' '+dd.getFullYear();
-                document.getElementById('resa-debut').value = (startH<10?'0':'')+startH+':'+(startM===0?'00':startM);
-                var endM = startM+60; var endH = startH+(endM>=60?1:0); endM=endM>=60?endM-60:endM;
-                document.getElementById('resa-fin').value = (endH<10?'0':'')+endH+':'+(endM===0?'00':endM);
-                document.getElementById('resa-error').textContent = '';
+            td.style.background='white'; td.style.cursor='pointer';
+            td.title='Réserver '+h+'h';
+            td.addEventListener('mouseenter',function(){ this.style.background='var(--accent-light)'; });
+            td.addEventListener('mouseleave',function(){ this.style.background='white'; });
+            (function(cLabel,dStr,startH){
+              td.addEventListener('click',function(){
+                currentResaCourt=cLabel; currentResaDate=dStr;
+                var dd=new Date(dStr+'T12:00:00');
+                document.getElementById('resa-court-label').textContent=court.icon+' '+cLabel;
+                document.getElementById('resa-date-label').textContent=dd.getDate()+' '+monthsFull[dd.getMonth()]+' '+dd.getFullYear();
+                document.getElementById('resa-debut').value=(startH<10?'0':'')+startH+':00';
+                document.getElementById('resa-fin').value=(startH+1<10?'0':'')+(startH+1)+':00';
+                document.getElementById('resa-error').textContent='';
                 openModal('modal-resa');
               });
-            })(court.label, dateStr, h);
-
-            // Hover effect
-            td.addEventListener('mouseenter', function(){ this.style.background='var(--accent-light)'; });
-            td.addEventListener('mouseleave', function(){ this.style.background='white'; });
+            })(court.label,dateStr,h);
           } else {
-            td.style.background = '#fafaf8';
+            td.style.background='#f7f6f2';
           }
-
           row.appendChild(td);
         });
         tbody.appendChild(row);
       });
-
       table.appendChild(tbody);
-      tbl.appendChild(table);
-      return tbl;
+      wrap.appendChild(table);
+      return wrap;
     }
 
     // Build page
-    el.innerHTML = '';
+    el.innerHTML='';
 
     // Week nav
-    var nav = document.createElement('div');
-    nav.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;';
-    nav.innerHTML = '<button class="btn btn-ghost btn-sm" onclick="resaWeekOffset--;loadReservations()">← Préc.</button>'
+    var nav=document.createElement('div');
+    nav.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;';
+    nav.innerHTML='<button class="btn btn-ghost btn-sm" onclick="resaWeekOffset--;loadReservations()">← Préc.</button>'
       +'<div style="font-size:13px;font-weight:600;text-align:center;flex:1;">'+weekLabel+'</div>'
       +'<button class="btn btn-ghost btn-sm" onclick="resaWeekOffset++;loadReservations()">Suiv. →</button>';
     el.appendChild(nav);
 
-    // Court switcher buttons
-    var switcher = document.createElement('div');
-    switcher.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;';
-    var tableWrap = document.createElement('div');
+    // Court switcher
+    var switcher=document.createElement('div');
+    switcher.style.cssText='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;';
+    var tableWrap=document.createElement('div');
 
     function switchCourt(idx) {
-      currentCourtIdx = idx;
       switcher.querySelectorAll('button').forEach(function(b,i){
-        b.style.background = i===idx ? 'var(--accent)' : 'var(--surface)';
-        b.style.color = i===idx ? 'white' : 'var(--text)';
-        b.style.borderColor = i===idx ? 'var(--accent)' : 'var(--border)';
-        b.style.fontWeight = i===idx ? '600' : '400';
+        b.style.background=i===idx?'var(--accent)':'var(--surface)';
+        b.style.color=i===idx?'white':'var(--text)';
+        b.style.borderColor=i===idx?'var(--accent)':'var(--border)';
+        b.style.fontWeight=i===idx?'600':'400';
       });
-      tableWrap.innerHTML = '';
+      tableWrap.innerHTML='';
       tableWrap.appendChild(buildCourtTable(idx));
     }
 
-    COURTS_LIST.forEach(function(court, idx) {
-      var btn = document.createElement('button');
-      btn.className = 'btn btn-sm';
-      btn.style.cssText = 'border:1px solid var(--border);background:var(--surface);color:var(--text);';
-      btn.innerHTML = '<span class="court-badge '+court.cls+'" style="padding:1px 6px;font-size:10px;">'+court.icon+'</span> '+court.label;
-      btn.addEventListener('click', function(){ switchCourt(idx); });
+    COURTS_LIST.forEach(function(court,idx){
+      var btn=document.createElement('button');
+      btn.className='btn btn-sm';
+      btn.style.cssText='border:1px solid var(--border);background:var(--surface);color:var(--text);';
+      btn.innerHTML='<span class="court-badge '+court.cls+'" style="padding:1px 6px;font-size:10px;">'+court.icon+'</span> '+court.label;
+      btn.addEventListener('click',function(){ switchCourt(idx); });
       switcher.appendChild(btn);
     });
-
     el.appendChild(switcher);
 
-    // Bloquer button
-    if(isOrga()) {
-      var blkBtn = document.createElement('div');
-      blkBtn.style.cssText = 'text-align:right;margin-bottom:10px;';
-      blkBtn.innerHTML = '<button class="btn btn-danger btn-sm" onclick="openModal(\'modal-bloquer\')">🚫 Bloquer un créneau</button>';
-      el.appendChild(blkBtn);
+    if(isOrga()){
+      var blk=document.createElement('div');
+      blk.style.cssText='text-align:right;margin-bottom:8px;';
+      blk.innerHTML='<button class="btn btn-danger btn-sm" onclick="openModal(\'modal-bloquer\')">🚫 Bloquer un créneau</button>';
+      el.appendChild(blk);
     }
 
     // Legend
-    var legend = document.createElement('div');
-    legend.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;';
-    legend.innerHTML = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#d4edda;border:1px solid var(--accent);border-radius:2px;display:inline-block;"></span>Ma réservation</span>'
-      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#fff3cd;border:1px solid #e8d08a;border-radius:2px;display:inline-block;"></span>Autre membre</span>'
-      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:#fdf0f0;border:1px solid #e8a0a0;border-radius:2px;display:inline-block;"></span>Bloqué</span>'
-      +'<span style="display:flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;background:white;border:1px solid var(--border);border-radius:2px;display:inline-block;"></span>Libre</span>';
+    var legend=document.createElement('div');
+    legend.style.cssText='display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;color:var(--text-muted);';
+    legend.innerHTML='<span><span style="display:inline-block;width:12px;height:12px;background:#d4edda;border:1px solid var(--accent);border-radius:2px;vertical-align:middle;margin-right:3px;"></span>Ma résa</span>'
+      +'<span><span style="display:inline-block;width:12px;height:12px;background:#fff3cd;border:1px solid #e8d08a;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>Autre membre</span>'
+      +'<span><span style="display:inline-block;width:12px;height:12px;background:#fdf0f0;border:1px solid #e8a0a0;border-radius:2px;vertical-align:middle;margin-right:3px;"></span>Bloqué</span>'
+      +'<span><span style="display:inline-block;width:12px;height:12px;background:white;border:1px solid var(--border);border-radius:2px;vertical-align:middle;margin-right:3px;"></span>Libre (cliquer)</span>';
     el.appendChild(legend);
 
     el.appendChild(tableWrap);
     switchCourt(0);
 
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><span class="eico">⚠️</span>'+e.message+'</div>';
+  } catch(e){
+    el.innerHTML='<div class="empty"><span class="eico">⚠️</span>'+e.message+'</div>';
   }
 }
 
