@@ -1876,13 +1876,13 @@ function buildMLCard(m, membres) {
       delBtn.style.color = 'var(--red)';
       delBtn.textContent = 'Supprimer';
       var confirmDiv = document.createElement('div');
-      confirmDiv.style.cssText = 'display:none;margin-top:6px;background:var(--red-light);border-radius:4px;padding:8px;display:none;align-items:center;gap:8px;';
+      confirmDiv.style.cssText = 'margin-top:6px;background:var(--red-light);border-radius:4px;padding:8px;align-items:center;gap:8px;'; confirmDiv.style.display='none';
       delBtn.addEventListener('click', function(){
         confirmDiv.style.display = confirmDiv.style.display==='flex'?'none':'flex';
       });
       var ouiBtn = document.createElement('button');
       ouiBtn.className = 'btn btn-danger btn-sm';
-      ouiBtn.textContent = 'Oui supprimer';
+      ouiBtn.textContent = 'Oui';
       ouiBtn.style.cssText = 'background:var(--red);color:white;border-color:var(--red);';
       (function(mid){ ouiBtn.addEventListener('click', function(){ supprimerMatchLibre(mid); }); })(m.id);
       var nonBtn = document.createElement('button');
