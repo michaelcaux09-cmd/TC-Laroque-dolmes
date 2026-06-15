@@ -1564,73 +1564,36 @@ function renderTBracket(el) {
   _bm.sort(function(a,b){return b.round-a.round;});
   var champ=_bm[0]||null;
 
-  // Box dimensions
-  var BOX_H=28, BOX_W=160, VGAP=20, COL_W=200;
-  var firstCount=currentMatchs.filter(function(m){return m.round===rounds[0]&&!m.bye&&!m.repechage;}).length;
-  var canvasH=Math.max(firstCount*(BOX_H*2+VGAP)+40, 120);
-  var canvasW=(rounds.length+1)*COL_W+BOX_W+20;
+  var BOX_H=56; // total height per box (2 lines x 28px)
 
-  var SLOT_H = BOX_H*2+VGAP; // height of one round-1 slot
-  // Center Y of round-1 match mi (0-indexed)
-  function r1CenterY(mi) {
-    return 24 + mi*SLOT_H + SLOT_H/2;
-  }
-  // For round r, match mi spans 2^(r-1) round-1 slots; center = average of its children's centers
-  function matchCenterY(round, mi) {
-    var span = Math.pow(2, round-1); // number of round-1 slots this match covers
-    var firstSlot = mi*span;
-    var lastSlot = firstSlot + span - 1;
-    return (r1CenterY(firstSlot) + r1CenterY(lastSlot)) / 2;
-  }
-  function matchTopY(round, mi) {
-    return matchCenterY(round, mi) - BOX_H;
-  }
+  // Build columns: each round is a flex column with matches
+  // Round 1 matches are evenly spaced with gaps
+  // Subsequent rounds: each match is vertically centered between its two source matches
+  var firstCount = currentMatchs.filter(function(m){return m.round===rounds[0]&&!m.bye&&!m.repechage;}).length;
 
-  // SVG connector lines
-  var svgLines='';
-  rounds.forEach(function(round,ri){
-    if(ri>=rounds.length-1) return;
-    var roundMs=currentMatchs.filter(function(m){return m.round===round&&!m.bye&&!m.repechage;});
-    roundMs.forEach(function(m,mi){
-      var nextRound=rounds[ri+1];
-      var nextMi=Math.floor(mi/2);
-      var x1=ri*COL_W+BOX_W;
-      var y1=matchCenterY(round,mi);
-      var x2=(ri+1)*COL_W;
-      var y2=matchCenterY(nextRound,nextMi);
-      var xMid=x1+15;
-      svgLines+='<line x1="'+x1+'" y1="'+y1+'" x2="'+xMid+'" y2="'+y1+'" />';
-      if(mi%2===0){
-        var partnerMs=currentMatchs.filter(function(m2){return m2.round===round&&!m2.bye&&!m2.repechage;});
-        if(mi+1<partnerMs.length){
-          var yPartner=matchCenterY(round,mi+1);
-          svgLines+='<line x1="'+xMid+'" y1="'+y1+'" x2="'+xMid+'" y2="'+yPartner+'" />';
-          svgLines+='<line x1="'+xMid+'" y1="'+y2+'" x2="'+x2+'" y2="'+y2+'" />';
-        }
-      }
-    });
-  });
-  // Connector to winner
-  if(rounds.length>0){
-    var lastRound=rounds[rounds.length-1];
-    var lastMs=currentMatchs.filter(function(m){return m.round===lastRound&&!m.bye&&!m.repechage;});
-    if(lastMs.length===1){
-      var x1f=(rounds.length-1)*COL_W+BOX_W;
-      var y1f=matchCenterY(lastRound,0);
-      var xMid=x1f+15;
-      svgLines+='<line x1="'+x1f+'" y1="'+y1f+'" x2="'+xMid+'" y2="'+y1f+'" />';
-      svgLines+='<line x1="'+xMid+'" y1="'+y1f+'" x2="'+(rounds.length*COL_W)+'" y2="'+y1f+'" />';
-    }
-  }
+  var html = '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'
+    +'<button class="btn btn-ghost btn-sm" onclick="exportBracketPDF()">📄 Exporter PDF</button>'
+    +'</div>';
 
-  // Match boxes HTML
-  var matchHtml='';
-  rounds.forEach(function(round,ri){
-    var roundMs=currentMatchs.filter(function(m){return m.round===round&&!m.bye&&!m.repechage;});
-    // Round label
-    matchHtml+='<div style="position:absolute;left:'+(ri*COL_W)+'px;top:0;width:'+BOX_W+'px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-hint);">'+getRoundLabel(round,total)+'</div>';
-    roundMs.forEach(function(m,mi){
-      var topY=matchTopY(round,mi);
+  html += '<div style="overflow-x:auto;padding-bottom:8px;">';
+  html += '<div style="display:flex;align-items:flex-start;gap:30px;min-width:max-content;padding:10px 0;">';
+
+  rounds.forEach(function(round, ri){
+    var roundMs = currentMatchs.filter(function(m){return m.round===round&&!m.bye&&!m.repechage;});
+    var n = roundMs.length;
+    // Gap between boxes in this column so that total column height = firstCount*(BOX_H) + (firstCount-1)*GAP1
+    // where GAP1 is round-1 gap. For round r, gap = (BOX_H+GAP1) * 2^(r-1) - BOX_H
+    var GAP1 = 24;
+    var unit = BOX_H + GAP1; // height of one round-1 slot
+    var span = Math.pow(2, ri); // number of round-1 slots per box in this round
+    var thisGap = unit*span - BOX_H;
+    var topOffset = (unit*span - BOX_H)/2; // center first box within its slots
+
+    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;">';
+    html += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-hint);text-align:center;margin-bottom:8px;">'+getRoundLabel(round,total)+'</div>';
+    html += '<div style="display:flex;flex-direction:column;justify-content:flex-start;" >';
+    roundMs.forEach(function(m, mi){
+      var marginTop = mi===0 ? topOffset : thisGap;
       var scores=Array.isArray(m.scores)?m.scores:(m.scores?JSON.parse(m.scores):[]);
       var n1=m.p1_id?jNameById(m.p1_id):'A definir';
       var n2=m.p2_id?jNameById(m.p2_id):'A definir';
@@ -1640,42 +1603,36 @@ function renderTBracket(el) {
       var s2b=m.seed2?'<span class="seed-b">T'+m.seed2+'</span>':'';
       var w1=m.winner_id===m.p1_id&&m.winner_id, w2=m.winner_id===m.p2_id&&m.winner_id;
       var r1 = jRankById(m.p1_id), r2 = jRankById(m.p2_id);
-      matchHtml+='<div style="position:absolute;left:'+(ri*COL_W)+'px;top:'+topY+'px;width:'+BOX_W+'px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);">'
-        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:'+(w1?'var(--accent-light)':'')+';">'
+      html += '<div style="margin-top:'+marginTop+'px;height:'+BOX_H+'px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);">'
+        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:50%;border-bottom:1px solid var(--border);background:'+(w1?'var(--accent-light)':'')+';">'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(w1?'font-weight:700;color:var(--accent-dark);':'')+(m.winner_id&&!w1?'color:var(--text-hint);text-decoration:line-through;':'')+'">'+s1b+n1+'</span>'
         +(r1?'<span style="font-size:9px;background:#e8f0e4;color:#1e3d12;padding:1px 4px;border-radius:3px;font-weight:600;margin:0 3px;flex-shrink:0;">'+r1+'</span>':'')
         +'<span style="font-size:10px;color:'+(w1?'var(--accent)':'var(--text-hint)')+';flex-shrink:0;">'+sc1+'</span></div>'
-        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;background:'+(w2?'var(--accent-light)':'')+';">'
+        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:50%;background:'+(w2?'var(--accent-light)':'')+';">'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(w2?'font-weight:700;color:var(--accent-dark);':'')+(m.winner_id&&!w2?'color:var(--text-hint);text-decoration:line-through;':'')+'">'+s2b+n2+'</span>'
         +(r2?'<span style="font-size:9px;background:#e8f0e4;color:#1e3d12;padding:1px 4px;border-radius:3px;font-weight:600;margin:0 3px;flex-shrink:0;">'+r2+'</span>':'')
         +'<span style="font-size:10px;color:'+(w2?'var(--accent)':'var(--text-hint)')+';flex-shrink:0;">'+sc2+'</span></div>'
         +'</div>';
     });
+    html += '</div></div>';
   });
 
-  // Winner box
+  // Winner column
   if(champ){
-    var wy=canvasH/2-BOX_H;
-    matchHtml+='<div style="position:absolute;left:'+(rounds.length*COL_W)+'px;top:'+wy+'px;width:'+BOX_W+'px;background:var(--accent-dark);border-radius:6px;padding:10px;text-align:center;color:white;">'
+    var unit = BOX_H + 24;
+    var totalH = firstCount*unit - 24;
+    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;justify-content:center;height:'+(totalH+22)+'px;">';
+    html += '<div style="background:var(--accent-dark);border-radius:6px;padding:10px;text-align:center;color:white;">'
       +'<div style="font-size:9px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">🏆 Vainqueur</div>'
       +'<div style="font-size:13px;font-weight:700;">'+jNameById(champ.winner_id)+'</div>'
-      +'</div>';
+      +'</div></div>';
   }
 
-  var html='<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'
-    +'<button class="btn btn-ghost btn-sm" onclick="exportBracketPDF()">📄 Exporter PDF</button>'
-    +'</div>'
-    +'<div style="overflow-x:auto;padding-bottom:8px;">'
-    +'<div style="position:relative;width:'+canvasW+'px;height:'+canvasH+'px;">'
-    +'<svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" xmlns="http://www.w3.org/2000/svg">'
-    +'<g stroke="#ccc9be" stroke-width="1.5" fill="none">'+svgLines+'</g>'
-    +'</svg>'
-    +matchHtml
-    +'</div></div>';
+  html += '</div></div>';
 
-  if(champ) html+='<div class="winner-banner"><span class="trophy">🏆</span><div class="wlbl">Vainqueur du tournoi</div><div class="wname">'+jNameById(champ.winner_id)+'</div></div>';
+  if(champ) html += '<div class="winner-banner"><span class="trophy">🏆</span><div class="wlbl">Vainqueur du tournoi</div><div class="wname">'+jNameById(champ.winner_id)+'</div></div>';
 
-  el.innerHTML=html;
+  el.innerHTML = html;
 }
 
 function renderRRTable(el) {
@@ -1708,8 +1665,10 @@ function exportBracketPDF() {
     +'.header{background:#1e3d12;color:white;padding:12px 16px;border-radius:6px;margin-bottom:14px;}'
     +'.header h1{margin:0;font-size:15px;}'
     +'.header p{margin:3px 0 0;font-size:10px;opacity:0.7;}'
-    +'[style*="position:absolute"]{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    +'.footer{margin-top:14px;font-size:9px;color:#9e9c94;text-align:center;border-top:1px solid #e5e3dc;padding-top:8px;}';
+    +'*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    +'.footer{margin-top:14px;font-size:9px;color:#9e9c94;text-align:center;border-top:1px solid #e5e3dc;padding-top:8px;}'
+    +'@page{size:A4 landscape;margin:10mm;}'
+    +'@media print{body{transform:scale(0.85);transform-origin:top left;}}';
 
   var body = '<div class="header"><h1>TC Laroque d\'Olmes — '+titre+'</h1><p>Tableau du tournoi · '+date+'</p></div>';
   // Remove the export button from printed content
