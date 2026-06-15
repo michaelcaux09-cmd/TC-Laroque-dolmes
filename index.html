@@ -159,6 +159,12 @@ tr:last-child td{border-bottom:none;}
 .b-player.win .b-sc{color:var(--accent);}
 .seed-b{background:var(--gold);color:white;border-radius:2px;font-size:8px;font-weight:700;padding:1px 3px;margin-right:3px;}
 
+/* Bracket connector lines */
+.bracket-col{position:relative;}
+.b-match{position:relative;}
+.bracket-col:not(:first-child) .b-match::before{content:"";position:absolute;left:-15px;top:50%;width:15px;height:1px;background:var(--border);}
+.bracket-col:not(:last-child) .b-match::after{content:"";position:absolute;right:-15px;top:50%;width:15px;height:1px;background:var(--border);}
+
 /* Winner banner */
 .winner-banner{background:linear-gradient(135deg,var(--accent-dark),#2d5a1b);border-radius:var(--radius);padding:1.25rem;text-align:center;color:white;margin-bottom:1rem;}
 .winner-banner .trophy{font-size:32px;display:block;margin-bottom:6px;}
@@ -1589,7 +1595,7 @@ function renderTBracket(el) {
     var thisGap = unit*span - BOX_H;
     var topOffset = (unit*span - BOX_H)/2; // center first box within its slots
 
-    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;">';
+    html += '<div class="bracket-col" style="display:flex;flex-direction:column;flex-shrink:0;width:170px;">';
     html += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-hint);text-align:center;margin-bottom:8px;">'+getRoundLabel(round,total)+'</div>';
     html += '<div style="display:flex;flex-direction:column;justify-content:flex-start;" >';
     roundMs.forEach(function(m, mi){
@@ -1603,7 +1609,7 @@ function renderTBracket(el) {
       var s2b=m.seed2?'<span class="seed-b">T'+m.seed2+'</span>':'';
       var w1=m.winner_id===m.p1_id&&m.winner_id, w2=m.winner_id===m.p2_id&&m.winner_id;
       var r1 = jRankById(m.p1_id), r2 = jRankById(m.p2_id);
-      html += '<div style="margin-top:'+marginTop+'px;height:'+BOX_H+'px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);">'
+      html += '<div class="b-match" style="margin-top:'+marginTop+'px;height:'+BOX_H+'px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);position:relative;">'
         +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:50%;border-bottom:1px solid var(--border);background:'+(w1?'var(--accent-light)':'')+';">'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(w1?'font-weight:700;color:var(--accent-dark);':'')+(m.winner_id&&!w1?'color:var(--text-hint);text-decoration:line-through;':'')+'">'+s1b+n1+'</span>'
         +(r1?'<span style="font-size:9px;background:#e8f0e4;color:#1e3d12;padding:1px 4px;border-radius:3px;font-weight:600;margin:0 3px;flex-shrink:0;">'+r1+'</span>':'')
@@ -1621,7 +1627,7 @@ function renderTBracket(el) {
   if(champ){
     var unit = BOX_H + 24;
     var totalH = firstCount*unit - 24;
-    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:160px;justify-content:center;height:'+(totalH+22)+'px;">';
+    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:170px;justify-content:center;height:'+(totalH+22)+'px;">';
     html += '<div style="background:var(--accent-dark);border-radius:6px;padding:10px;text-align:center;color:white;">'
       +'<div style="font-size:9px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">🏆 Vainqueur</div>'
       +'<div style="font-size:13px;font-weight:700;">'+jNameById(champ.winner_id)+'</div>'
@@ -1662,13 +1668,25 @@ function exportBracketPDF() {
   if(!el) return;
 
   var css = 'body{font-family:Arial,sans-serif;padding:16px;color:#1a1916;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    +'*{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;}'
     +'.header{background:#1e3d12;color:white;padding:12px 16px;border-radius:6px;margin-bottom:14px;}'
     +'.header h1{margin:0;font-size:15px;}'
     +'.header p{margin:3px 0 0;font-size:10px;opacity:0.7;}'
-    +'*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
     +'.footer{margin-top:14px;font-size:9px;color:#9e9c94;text-align:center;border-top:1px solid #e5e3dc;padding-top:8px;}'
-    +'@page{size:A4 landscape;margin:10mm;}'
-    +'@media print{body{transform:scale(0.85);transform-origin:top left;}}';
+    // Match box styles
+    +'div[style*="border:1px solid var(--border)"]{border:1px solid #ccc !important;background:#fff !important;}'
+    +'div[style*="background:var(--accent-light)"]{background:#e8f0e4 !important;}'
+    +'span[style*="color:var(--accent-dark)"]{color:#1e3d12 !important;}'
+    +'span[style*="color:var(--text-hint)"]{color:#bbb !important;}'
+    +'span[style*="color:var(--accent)"]{color:#2d5a1b !important;}'
+    +'div[style*="background:var(--accent-dark)"]{background:#1e3d12 !important;color:#fff !important;}'
+    +'.seed-b{background:#b8860b !important;color:#fff !important;border-radius:2px;font-size:8px;font-weight:700;padding:1px 3px;margin-right:3px;}'
+    // Connector lines using CSS pseudo-elements on match boxes
+    +'.bracket-col{position:relative;}'
+    +'.bracket-col:not(:first-child) .b-match::before{content:"";position:absolute;left:-15px;top:50%;width:15px;height:1px;background:#ccc;}'
+    +'.bracket-col:not(:last-child) .b-match::after{content:"";position:absolute;right:-15px;top:50%;width:15px;height:1px;background:#ccc;}'
+    +'@page{size:A4 landscape;margin:8mm;}'
+    +'@media print{body{transform:scale(0.8);transform-origin:top left;width:125%;}}';
 
   var body = '<div class="header"><h1>TC Laroque d\'Olmes — '+titre+'</h1><p>Tableau du tournoi · '+date+'</p></div>';
   // Remove the export button from printed content
