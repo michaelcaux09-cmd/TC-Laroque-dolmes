@@ -1221,6 +1221,12 @@ async function regenererTableau() {
 
 async function genererMatchs() {
   if(currentJoueurs.length < 2){ alert('Ajoutez au moins 2 joueurs'); return; }
+  // Protection anti double-generation : verifier qu'il n'y a pas deja des matchs
+  var existing = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&select=id');
+  if(existing && existing.length > 0){
+    alert('Des matchs existent deja pour ce tournoi. Utilisez "Regenerer le tableau" pour repartir a zero.');
+    return;
+  }
   var sc = parseInt(document.getElementById('tj-sets').value)||3;
   var newMatchs = [];
 
