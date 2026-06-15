@@ -1399,11 +1399,14 @@ async function advanceByes() {
 
 // ── MATCHS ──
 function getRoundLabel(round, total) {
-  var d=total-round;
+  var d=total-round; // 0 = finale, 1 = demi, 2 = quart, 3 = 1/8, 4 = 1/16, 5 = 1/32, 6 = 1/64
   if(d===0) return 'Finale';
   if(d===1) return 'Demi-finales';
   if(d===2) return 'Quarts de finale';
   if(d===3) return '1/8 de finale';
+  if(d===4) return '1/16 de finale';
+  if(d===5) return '1/32 de finale';
+  if(d===6) return '1/64 de finale';
   return 'Tour '+round;
 }
 
