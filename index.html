@@ -1565,7 +1565,7 @@ function renderTBracket(el) {
   var champ=_bm[0]||null;
 
   // Box dimensions
-  var BOX_H=26, BOX_W=150, VGAP=10, COL_W=180;
+  var BOX_H=28, BOX_W=160, VGAP=20, COL_W=200;
   var firstCount=currentMatchs.filter(function(m){return m.round===rounds[0]&&!m.bye&&!m.repechage;}).length;
   var canvasH=Math.max(firstCount*(BOX_H*2+VGAP)+40, 120);
   var canvasW=(rounds.length+1)*COL_W+BOX_W+20;
