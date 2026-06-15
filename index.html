@@ -1026,6 +1026,12 @@ async function renderTJoueurs(el) {
         +'<div class="field"><label>Têtes de série</label><select id="tj-seeds"><option value="0">Aucune</option><option value="2" selected>2</option><option value="4">4</option><option value="8">8</option></select></div></div>'
         +'<button class="btn btn-primary" onclick="genererMatchs()">🔀 Générer le tableau</button>'
         +'</div>';
+    } else if(isOrga()) {
+      html += '<div class="card" style="border-color:var(--gold);">'
+        +'<div style="font-size:13px;color:var(--gold);font-weight:600;margin-bottom:8px;">⚠️ Tableau déjà généré</div>'
+        +'<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Régénérer effacera tous les matchs et scores actuels.</div>'
+        +'<button class="btn btn-danger" onclick="regenererTableau()">🔄 Régénérer le tableau</button>'
+        +'</div>';
     }
   }
 
@@ -1187,6 +1193,17 @@ async function viderJoueurs() {
 // ── GÉNÉRATION DES MATCHS ──
 function shuffle(arr){ return arr.slice().sort(function(){ return Math.random()-0.5; }); }
 function nextPow2(n){ var p=1; while(p<n) p*=2; return p; }
+
+async function regenererTableau() {
+  if(!confirm('Supprimer tous les matchs et scores actuels, puis regenerer le tableau ?')) return;
+  try {
+    await sbDelete('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id);
+    currentMatchs = [];
+    await sbPatch('tournois',{statut:'inscriptions'},'id=eq.'+currentTournoi.id);
+    currentTournoi.statut='inscriptions';
+    showTournoiTab('joueurs');
+  } catch(e){ alert('Erreur: '+e.message); }
+}
 
 async function genererMatchs() {
   if(currentJoueurs.length < 2){ alert('Ajoutez au moins 2 joueurs'); return; }
