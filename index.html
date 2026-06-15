@@ -1570,13 +1570,21 @@ function renderTBracket(el) {
   var canvasH=Math.max(firstCount*(BOX_H*2+VGAP)+40, 120);
   var canvasW=(rounds.length+1)*COL_W+BOX_W+20;
 
-  function matchTopY(round,mi){
-    var n=currentMatchs.filter(function(m){return m.round===round&&!m.bye&&!m.repechage;}).length;
-    var totalH=firstCount*(BOX_H*2+VGAP)-VGAP;
-    var spacing=totalH/n;
-    return 24+mi*spacing+(spacing-BOX_H*2)/2;
+  var SLOT_H = BOX_H*2+VGAP; // height of one round-1 slot
+  // Center Y of round-1 match mi (0-indexed)
+  function r1CenterY(mi) {
+    return 24 + mi*SLOT_H + SLOT_H/2;
   }
-  function matchCenterY(round,mi){ return matchTopY(round,mi)+BOX_H; }
+  // For round r, match mi spans 2^(r-1) round-1 slots; center = average of its children's centers
+  function matchCenterY(round, mi) {
+    var span = Math.pow(2, round-1); // number of round-1 slots this match covers
+    var firstSlot = mi*span;
+    var lastSlot = firstSlot + span - 1;
+    return (r1CenterY(firstSlot) + r1CenterY(lastSlot)) / 2;
+  }
+  function matchTopY(round, mi) {
+    return matchCenterY(round, mi) - BOX_H;
+  }
 
   // SVG connector lines
   var svgLines='';
