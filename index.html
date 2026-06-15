@@ -1240,37 +1240,51 @@ async function genererMatchs() {
     var seedsSorted = sorted.slice(0, seedCount);
     var rest = shuffle(sorted.slice(seedCount));
 
-    if(seedCount>=1) slots[0] = seedsSorted[0];
-    if(seedCount>=2) slots[tableSize-1] = seedsSorted[1];
+    var seedPositions = [];
+    if(seedCount>=1){ slots[0] = seedsSorted[0]; seedPositions.push(0); }
+    if(seedCount>=2){ slots[tableSize-1] = seedsSorted[1]; seedPositions.push(tableSize-1); }
     if(seedCount>=4){
       var s34 = shuffle([seedsSorted[2], seedsSorted[3]]);
-      slots[Math.floor(tableSize/4)] = s34[0];
-      slots[Math.floor(3*tableSize/4)] = s34[1];
+      var p3=Math.floor(tableSize/4), p4=Math.floor(3*tableSize/4);
+      slots[p3] = s34[0]; slots[p4] = s34[1];
+      seedPositions.push(p3, p4);
     }
     if(seedCount>=8){
       var s58 = shuffle(seedsSorted.slice(4,8));
-      [Math.floor(tableSize/8), Math.floor(3*tableSize/8), Math.floor(5*tableSize/8), Math.floor(7*tableSize/8)].forEach(function(pos,idx){
-        if(s58[idx]) slots[pos] = s58[idx];
+      var p58 = [Math.floor(tableSize/8), Math.floor(3*tableSize/8), Math.floor(5*tableSize/8), Math.floor(7*tableSize/8)];
+      p58.forEach(function(pos,idx){
+        if(s58[idx]){ slots[pos] = s58[idx]; seedPositions.push(pos); }
       });
     }
 
-    // Remplir le reste aleatoirement, en laissant des trous (byes) pour les mieux classes restants
-    // Byes places aux extremites opposees aux seeds principaux pour favoriser leur entree tardive
+    // ── Byes (exemptions) : priorite aux meilleurs classes (seeds) ──
+    // Regle FFT : les mieux classes recoivent les exemptions en priorite
     var byeCount = tableSize - n;
-    var byeSlotsCandidates = [];
-    for(var s=0;s<tableSize;s++) if(!slots[s]) byeSlotsCandidates.push(s);
-    // Repartir les byes en alternance dans les slots libres, pres des positions de seeds
-    var byeSlots = shuffle(byeSlotsCandidates).slice(0, byeCount);
     var byeSet = {};
-    byeSlots.forEach(function(s){ byeSet[s]=true; });
 
-    var ri = 0;
-    for(var i=0;i<tableSize;i++){
-      if(!slots[i] && !byeSet[i] && ri<rest.length) slots[i]=rest[ri++];
+    // 1. Donner un bye au partenaire de slot de chaque seed (T1, T2, T3... dans l'ordre)
+    for(var si=0; si<seedPositions.length && Object.keys(byeSet).length < byeCount; si++){
+      var sp = seedPositions[si];
+      if(sp===undefined || slots[sp]===null) continue; // seed pas placee a cette position
+      var partner = (sp % 2 === 0) ? sp+1 : sp-1;
+      if(slots[partner]===null && !byeSet[partner]){
+        byeSet[partner] = true;
+      }
     }
-    // Remaining empty (non-bye) slots get leftover players if any
-    for(var i=0;i<tableSize;i++){
-      if(!slots[i] && ri<rest.length) slots[i]=rest[ri++];
+
+    // 2. S'il manque encore des byes, les distribuer aleatoirement parmi les slots vides restants
+    var remainingEmpty = [];
+    for(var s=0;s<tableSize;s++) if(slots[s]===null && !byeSet[s]) remainingEmpty.push(s);
+    remainingEmpty = shuffle(remainingEmpty);
+    var stillNeeded = byeCount - Object.keys(byeSet).length;
+    for(var i=0;i<stillNeeded && i<remainingEmpty.length;i++){ byeSet[remainingEmpty[i]] = true; }
+
+    // 3. Remplir les slots restants (non-bye) avec le reste des joueurs
+    var fillSlots = [];
+    for(var s=0;s<tableSize;s++) if(slots[s]===null && !byeSet[s]) fillSlots.push(s);
+    var ri = 0;
+    for(var i=0;i<fillSlots.length;i++){
+      if(ri<rest.length) slots[fillSlots[i]]=rest[ri++];
     }
 
     // Generer matchs tour 1
@@ -1588,7 +1602,7 @@ function renderTBracket(el) {
   var ROWS_PER_SLOT = 2; // 1 row for box, 1 row for gap
 
   var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-    +'<span style="font-size:10px;color:var(--text-hint);">v15juin-2152 · '+rounds.length+' tours · '+firstCount+' matchs R1</span>'
+    +'<span style="font-size:10px;color:var(--text-hint);">v15juin-2200 · '+rounds.length+' tours · '+firstCount+' matchs R1</span>'
     +'<button class="btn btn-ghost btn-sm" onclick="exportBracketPDF()">📄 Exporter PDF</button>'
     +'</div>';
 
