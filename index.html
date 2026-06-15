@@ -1587,7 +1587,8 @@ function renderTBracket(el) {
   // grid-row-end   = (lastSlot+1)*ROWS_PER_SLOT + 1  (i.e. spans through to start of next slot's row)
   var ROWS_PER_SLOT = 2; // 1 row for box, 1 row for gap
 
-  var html = '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+    +'<span style="font-size:10px;color:var(--text-hint);">v15juin-2152 · '+rounds.length+' tours · '+firstCount+' matchs R1</span>'
     +'<button class="btn btn-ghost btn-sm" onclick="exportBracketPDF()">📄 Exporter PDF</button>'
     +'</div>';
 
