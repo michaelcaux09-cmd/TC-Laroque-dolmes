@@ -916,7 +916,7 @@ function buildTournoiPage(t) {
 async function loadTournoiData() {
   try {
     currentJoueurs = await sbGet('joueurs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=seed.asc.nullslast,classement.asc') || [];
-    currentMatchs  = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+    currentMatchs  = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc,position.asc') || [];
     showTournoiTab("joueurs");
   } catch(e) {
     document.getElementById('t-detail-content').innerHTML = '<div class="empty"><span class="eico">⚠️</span>'+e.message+'</div>';
@@ -1327,7 +1327,7 @@ async function genererMatchs() {
     await advanceByes(); // 3x pour les joueurs entrant au tour 4
     await sbPatch('tournois',{statut:'en_cours',format:tournoisFormat},'id=eq.'+currentTournoi.id);
     currentTournoi.statut='en_cours'; currentTournoi.format=tournoisFormat;
-    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc,position.asc') || [];
     showTournoiTab('matchs');
   } catch(e){ alert('Erreur generation: '+e.message); }
 }
@@ -1335,7 +1335,7 @@ async function genererMatchs() {
 async function advanceByes() {
   // Loop multiple times to handle players with multiple consecutive byes
   for(var pass=0; pass<5; pass++) {
-    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc,position.asc') || [];
     var byes = currentMatchs.filter(function(m){ return m.bye && m.winner_id; });
     var advanced = false;
     for(var i=0;i<byes.length;i++){
@@ -1345,13 +1345,13 @@ async function advanceByes() {
       var nextMatchs = currentMatchs.filter(function(m){ return m.round===nextRound && !m.bye; });
       var alreadyIn = nextMatchs.some(function(m){ return m.p1_id===byeM.winner_id || m.p2_id===byeM.winner_id; });
       if(!alreadyIn){
-        await advanceWinner(byeM.winner_id, byeM.round);
+        await advanceWinner(byeM.winner_id, byeM.round, byeM.id);
         advanced = true;
       }
     }
     if(!advanced) break;
   }
-  currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+  currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc,position.asc') || [];
 }
 
 // ── MATCHS ──
@@ -1491,21 +1491,44 @@ async function validerScore(btn) {
     if(lj){ lj.losses=(lj.losses||0)+1; lj.sets_won=(lj.sets_won||0)+(p1s<p2s?p1s:p2s); lj.sets_lost=(lj.sets_lost||0)+(p1s<p2s?p2s:p1s);
       await sbPatch('joueurs_tournoi',{losses:lj.losses,sets_won:lj.sets_won,sets_lost:lj.sets_lost},'id=eq.'+lj.id); }
     // Advance winner
-    if(tournoisFormat==='elimination') await advanceWinner(winnerId, m.round);
+    if(tournoisFormat==='elimination') await advanceWinner(winnerId, m.round, m.id);
     // Check if tournament is done
     await checkTournoiFini();
-    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc') || [];
+    currentMatchs = await sbGet('matchs_tournoi','tournoi_id=eq.'+currentTournoi.id+'&order=round.asc,position.asc') || [];
     showTournoiTab('matchs');
   } catch(e){ alert('Erreur: '+e.message); }
 }
 
-async function advanceWinner(winnerId, round) {
-  var nextRound=round+1;
-  var nextMatchs=currentMatchs.filter(function(m){return m.round===nextRound&&!m.bye;});
-  for(var i=0;i<nextMatchs.length;i++){
-    var nm=nextMatchs[i];
-    if(!nm.p1_id){ await sbPatch('matchs_tournoi',{p1_id:winnerId},'id=eq.'+nm.id); nm.p1_id=winnerId; return; }
-    if(!nm.p2_id){ await sbPatch('matchs_tournoi',{p2_id:winnerId},'id=eq.'+nm.id); nm.p2_id=winnerId; return; }
+async function advanceWinner(winnerId, round, sourceMatchId) {
+  var nextRound = round+1;
+  // Get all matches of the current round (including byes) ordered by id/creation to determine position
+  var curRoundMs = currentMatchs.filter(function(m){return m.round===round;}).sort(function(a,b){return (a.position||0)-(b.position||0);});
+  var nextMatchs = currentMatchs.filter(function(m){return m.round===nextRound&&!m.bye;}).sort(function(a,b){return (a.position||0)-(b.position||0);});
+  if(!nextMatchs.length) return;
+
+  // Find the index of the source match within its round
+  var srcIdx = curRoundMs.findIndex(function(m){ return m.id===sourceMatchId; });
+  if(srcIdx === -1) {
+    // Fallback: old behavior (first empty slot)
+    for(var i=0;i<nextMatchs.length;i++){
+      var nm=nextMatchs[i];
+      if(!nm.p1_id){ await sbPatch('matchs_tournoi',{p1_id:winnerId},'id=eq.'+nm.id); nm.p1_id=winnerId; return; }
+      if(!nm.p2_id){ await sbPatch('matchs_tournoi',{p2_id:winnerId},'id=eq.'+nm.id); nm.p2_id=winnerId; return; }
+    }
+    return;
+  }
+
+  // Pair index: matches 0&1 -> next match 0, matches 2&3 -> next match 1, etc.
+  var nextIdx = Math.floor(srcIdx/2);
+  var isFirstOfPair = (srcIdx % 2 === 0);
+  var nm = nextMatchs[nextIdx];
+  if(!nm) return;
+
+  // First of the pair goes to p1, second goes to p2
+  if(isFirstOfPair) {
+    if(!nm.p1_id) { await sbPatch('matchs_tournoi',{p1_id:winnerId},'id=eq.'+nm.id); nm.p1_id=winnerId; }
+  } else {
+    if(!nm.p2_id) { await sbPatch('matchs_tournoi',{p2_id:winnerId},'id=eq.'+nm.id); nm.p2_id=winnerId; }
   }
 }
 
@@ -1570,68 +1593,71 @@ function renderTBracket(el) {
   _bm.sort(function(a,b){return b.round-a.round;});
   var champ=_bm[0]||null;
 
-  var BOX_H=56; // total height per box (2 lines x 28px)
+  var firstCount = currentMatchs.filter(function(m){return m.round===rounds[0]&&!m.repechage;}).length;
 
-  // Build columns: each round is a flex column with matches
-  // Round 1 matches are evenly spaced with gaps
-  // Subsequent rounds: each match is vertically centered between its two source matches
-  var firstCount = currentMatchs.filter(function(m){return m.round===rounds[0]&&!m.bye&&!m.repechage;}).length;
+  // GRID layout: firstCount rows per round-1 slot (each slot = 2 grid rows: box + gap)
+  // A round-r match (0-indexed mi) spans rows from r1 slot (mi*2^(r-1)) to (mi+1)*2^(r-1)-1
+  // grid-row-start = firstSlot*ROWS_PER_SLOT + 1
+  // grid-row-end   = (lastSlot+1)*ROWS_PER_SLOT + 1  (i.e. spans through to start of next slot's row)
+  var ROWS_PER_SLOT = 2; // 1 row for box, 1 row for gap
 
   var html = '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'
     +'<button class="btn btn-ghost btn-sm" onclick="exportBracketPDF()">📄 Exporter PDF</button>'
     +'</div>';
 
   html += '<div style="overflow-x:auto;padding-bottom:8px;">';
-  html += '<div style="display:flex;align-items:flex-start;gap:30px;min-width:max-content;padding:10px 0;">';
+  var totalRows = firstCount * ROWS_PER_SLOT;
+  var numCols = rounds.length + (champ ? 1 : 0);
+  html += '<div class="bracket-grid" style="display:grid;grid-template-columns:repeat('+numCols+',170px);grid-template-rows:repeat('+totalRows+',28px);column-gap:30px;min-width:max-content;padding:24px 10px 10px;">';
 
   rounds.forEach(function(round, ri){
-    var roundMs = currentMatchs.filter(function(m){return m.round===round&&!m.bye&&!m.repechage;});
-    var n = roundMs.length;
-    // Gap between boxes in this column so that total column height = firstCount*(BOX_H) + (firstCount-1)*GAP1
-    // where GAP1 is round-1 gap. For round r, gap = (BOX_H+GAP1) * 2^(r-1) - BOX_H
-    var GAP1 = 24;
-    var unit = BOX_H + GAP1; // height of one round-1 slot
-    var span = Math.pow(2, ri); // number of round-1 slots per box in this round
-    var thisGap = unit*span - BOX_H;
-    var topOffset = (unit*span - BOX_H)/2; // center first box within its slots
+    var includeBye = (ri===0); // show byes only in round 1 to preserve grid alignment
+    var roundMs = currentMatchs.filter(function(m){
+      if(m.repechage) return false;
+      if(m.round!==round) return false;
+      if(m.bye && !includeBye) return false;
+      return true;
+    }).sort(function(a,b){return (a.position||0)-(b.position||0);});
+    var span = Math.pow(2, ri); // round-1 slots per match in this round
 
-    html += '<div class="bracket-col" style="display:flex;flex-direction:column;flex-shrink:0;width:170px;">';
-    html += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-hint);text-align:center;margin-bottom:8px;">'+getRoundLabel(round,total)+'</div>';
-    html += '<div style="display:flex;flex-direction:column;justify-content:flex-start;" >';
+    // Round label - placed above column, spanning row 0 (use a separate label row via negative trick)
+    html += '<div style="grid-column:'+(ri+1)+';grid-row:1;align-self:start;position:relative;top:-20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-hint);text-align:center;">'+getRoundLabel(round,total)+'</div>';
+
     roundMs.forEach(function(m, mi){
-      var marginTop = mi===0 ? topOffset : thisGap;
+      var firstSlot = mi*span;
+      var lastSlot  = firstSlot+span-1;
+      var rowStart = firstSlot*ROWS_PER_SLOT + 1;
+      var rowEnd   = (lastSlot+1)*ROWS_PER_SLOT; // end row (exclusive in grid terms = +1, so this spans correctly)
+
       var scores=Array.isArray(m.scores)?m.scores:(m.scores?JSON.parse(m.scores):[]);
-      var n1=m.p1_id?jNameById(m.p1_id):'A definir';
-      var n2=m.p2_id?jNameById(m.p2_id):'A definir';
+      var n1 = m.p1_id ? jNameById(m.p1_id) : (m.bye ? '<em style="opacity:0.5">Exempt</em>' : 'A definir');
+      var n2 = m.p2_id ? jNameById(m.p2_id) : (m.bye ? '<em style="opacity:0.5">Exempt</em>' : 'A definir');
       var sc1=scores.length?scores.map(function(s){return s[0];}).join('/'):' ';
       var sc2=scores.length?scores.map(function(s){return s[1];}).join('/'):' ';
       var s1b=m.seed1?'<span class="seed-b">T'+m.seed1+'</span>':'';
       var s2b=m.seed2?'<span class="seed-b">T'+m.seed2+'</span>':'';
       var w1=m.winner_id===m.p1_id&&m.winner_id, w2=m.winner_id===m.p2_id&&m.winner_id;
       var r1 = jRankById(m.p1_id), r2 = jRankById(m.p2_id);
-      html += '<div class="b-match" style="margin-top:'+marginTop+'px;height:'+BOX_H+'px;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);position:relative;">'
-        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:50%;border-bottom:1px solid var(--border);background:'+(w1?'var(--accent-light)':'')+';">'
+
+      html += '<div class="b-match" style="grid-column:'+(ri+1)+';grid-row:'+rowStart+' / span '+(rowEnd-rowStart+1)+';align-self:center;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:var(--surface);position:relative;">'
+        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:28px;border-bottom:1px solid var(--border);background:'+(w1?'var(--accent-light)':'')+';">'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(w1?'font-weight:700;color:var(--accent-dark);':'')+(m.winner_id&&!w1?'color:var(--text-hint);text-decoration:line-through;':'')+'">'+s1b+n1+'</span>'
         +(r1?'<span style="font-size:9px;background:#e8f0e4;color:#1e3d12;padding:1px 4px;border-radius:3px;font-weight:600;margin:0 3px;flex-shrink:0;">'+r1+'</span>':'')
         +'<span style="font-size:10px;color:'+(w1?'var(--accent)':'var(--text-hint)')+';flex-shrink:0;">'+sc1+'</span></div>'
-        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:50%;background:'+(w2?'var(--accent-light)':'')+';">'
+        +'<div style="padding:4px 7px;font-size:11px;display:flex;justify-content:space-between;align-items:center;height:28px;background:'+(w2?'var(--accent-light)':'')+';">'
         +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'+(w2?'font-weight:700;color:var(--accent-dark);':'')+(m.winner_id&&!w2?'color:var(--text-hint);text-decoration:line-through;':'')+'">'+s2b+n2+'</span>'
         +(r2?'<span style="font-size:9px;background:#e8f0e4;color:#1e3d12;padding:1px 4px;border-radius:3px;font-weight:600;margin:0 3px;flex-shrink:0;">'+r2+'</span>':'')
         +'<span style="font-size:10px;color:'+(w2?'var(--accent)':'var(--text-hint)')+';flex-shrink:0;">'+sc2+'</span></div>'
         +'</div>';
     });
-    html += '</div></div>';
   });
 
-  // Winner column
+  // Winner box - spans all rows, last column
   if(champ){
-    var unit = BOX_H + 24;
-    var totalH = firstCount*unit - 24;
-    html += '<div style="display:flex;flex-direction:column;flex-shrink:0;width:170px;justify-content:center;height:'+(totalH+22)+'px;">';
-    html += '<div style="background:var(--accent-dark);border-radius:6px;padding:10px;text-align:center;color:white;">'
+    html += '<div class="b-match" style="grid-column:'+(rounds.length+1)+';grid-row:1 / span '+totalRows+';align-self:center;background:var(--accent-dark);border-radius:6px;padding:10px;text-align:center;color:white;">'
       +'<div style="font-size:9px;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">🏆 Vainqueur</div>'
       +'<div style="font-size:13px;font-weight:700;">'+jNameById(champ.winner_id)+'</div>'
-      +'</div></div>';
+      +'</div>';
   }
 
   html += '</div></div>';
